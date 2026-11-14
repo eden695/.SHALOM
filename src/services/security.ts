@@ -41,9 +41,14 @@ export function getSecurityConfig(): SecurityConfig {
         secretHash: '',
         lockOnLaunch: false,
         lockedFeatures: [],
+        autoLockMinutes: 0,
       };
     }
-    return JSON.parse(raw) as SecurityConfig;
+    const parsed = JSON.parse(raw) as SecurityConfig;
+    return {
+      ...parsed,
+      autoLockMinutes: typeof parsed.autoLockMinutes === 'number' ? parsed.autoLockMinutes : 0,
+    };
   } catch {
     return {
       isEnabled: false,
@@ -51,6 +56,7 @@ export function getSecurityConfig(): SecurityConfig {
       secretHash: '',
       lockOnLaunch: false,
       lockedFeatures: [],
+      autoLockMinutes: 0,
     };
   }
 }

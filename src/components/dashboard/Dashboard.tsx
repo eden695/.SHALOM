@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   HeartHandshake,
   Mic,
@@ -11,9 +11,11 @@ import {
   TrendingUp,
   Sparkles,
   Vault,
+  Lightbulb,
 } from 'lucide-react';
 import { useShalomDB } from '../../hooks/useShalomDB';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { getUsageTipsEnabled } from '../../services/notifications';
 
 interface DashboardProps {
   onNavigate: (tab: string, subView?: string) => void;
@@ -39,6 +41,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
     recordings,
     weeklyAltarDays,
   } = useShalomDB();
+
+  const [showTips, setShowTips] = useState<boolean>(() => getUsageTipsEnabled());
+
+  useEffect(() => {
+    const syncTips = () => setShowTips(getUsageTipsEnabled());
+    window.addEventListener('shalom-settings-updated', syncTips);
+    return () => window.removeEventListener('shalom-settings-updated', syncTips);
+  }, []);
 
   const todayIso = new Date().toISOString().split('T')[0];
   const todayDow = new Date().getDay();
@@ -432,6 +442,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {showTips && (
+        <div className="p-4 rounded-2xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/70 dark:border-amber-900/40 flex items-start gap-3">
+          <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+            <Lightbulb className="w-4 h-4" />
+          </div>
+          <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+            <span className="font-bold text-slate-900 dark:text-white block">
+              {isEn ? 'SHALOM Usage Tip' : 'Conseil d’utilisation'}
+            </span>
+            {isEn
+              ? 'All your prayers, audio/video words, books, and creations stay stored 100% locally on your device. You can back them up or configure daily prayer reminders in Settings.'
+              : 'Toutes vos prières, paroles audio/vidéo, livres et créations restent enregistrés sur votre appareil même hors connexion. Activez vos rappels quotidiens ou exportez une sauvegarde JSON depuis les Paramètres.'}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

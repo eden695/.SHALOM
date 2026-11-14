@@ -9,6 +9,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig(() => {
   return {
     base: './',
+    define: {
+      __SHALOM_APP_VERSION__: JSON.stringify('2.5.0'),
+      __SHALOM_BUILD_DATE__: JSON.stringify(new Date().toISOString().split('T')[0]),
+    },
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

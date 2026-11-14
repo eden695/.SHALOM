@@ -33,152 +33,20 @@ import { SharePayload } from '../../services/socialShare';
 
 interface OnlineBookEntry {
   bookId: string;
-  wikiLang: 'fr' | 'en';
-  wikiPage: string;
+  source: 'wikisource' | 'openlibrary';
+  wikiLang?: 'fr' | 'en';
+  wikiPage?: string;
+  openLibraryKey?: string;
+  iaId?: string;
+  coverUrl?: string;
   title: string;
   author: string;
   category: 'livre' | 'etude';
   description: string;
   sourceUrl: string;
-  epubUrl: string;
-  pdfUrl: string;
+  epubUrl?: string;
+  pdfUrl?: string;
 }
-
-const ONLINE_BOOKS_CATALOG: OnlineBookEntry[] = [
-  {
-    bookId: 'ws_fr_psaumes',
-    wikiLang: 'fr',
-    wikiPage: 'Bible_Segond_1910/Livre_des_Psaumes',
-    title: 'La Sainte Bible — Livre des Psaumes (Louis Segond 1910)',
-    author: 'Traduction Louis Segond (Domaine public)',
-    category: 'livre',
-    description:
-      'Texte intégral des 150 Psaumes en français (traduction Louis Segond 1910) provenant de Wikisource.',
-    sourceUrl: 'https://fr.wikisource.org/wiki/Bible_Segond_1910/Livre_des_Psaumes',
-    epubUrl:
-      'https://ws-export.wmcloud.org/?lang=fr&format=epub&page=Bible_Segond_1910/Livre_des_Psaumes',
-    pdfUrl:
-      'https://ws-export.wmcloud.org/?lang=fr&format=pdf&page=Bible_Segond_1910/Livre_des_Psaumes',
-  },
-  {
-    bookId: 'ws_fr_jean',
-    wikiLang: 'fr',
-    wikiPage: 'Bible_Segond_1910/Évangile_selon_Jean',
-    title: 'Évangile selon Jean (Louis Segond 1910)',
-    author: 'Traduction Louis Segond (Domaine public)',
-    category: 'livre',
-    description:
-      'Texte complet de l’Évangile selon Jean (chapitres 1 à 21) récupéré en ligne sur Wikisource.',
-    sourceUrl: 'https://fr.wikisource.org/wiki/Bible_Segond_1910/%C3%89vangile_selon_Jean',
-    epubUrl:
-      'https://ws-export.wmcloud.org/?lang=fr&format=epub&page=Bible_Segond_1910/%C3%89vangile_selon_Jean',
-    pdfUrl:
-      'https://ws-export.wmcloud.org/?lang=fr&format=pdf&page=Bible_Segond_1910/%C3%89vangile_selon_Jean',
-  },
-  {
-    bookId: 'ws_fr_proverbes',
-    wikiLang: 'fr',
-    wikiPage: 'Bible_Segond_1910/Proverbes',
-    title: 'Livre des Proverbes (Louis Segond 1910)',
-    author: 'Traduction Louis Segond (Domaine public)',
-    category: 'livre',
-    description:
-      'Texte intégral des 31 chapitres du Livre des Proverbes sur la sagesse pratique et la crainte de Dieu.',
-    sourceUrl: 'https://fr.wikisource.org/wiki/Bible_Segond_1910/Proverbes',
-    epubUrl:
-      'https://ws-export.wmcloud.org/?lang=fr&format=epub&page=Bible_Segond_1910/Proverbes',
-    pdfUrl:
-      'https://ws-export.wmcloud.org/?lang=fr&format=pdf&page=Bible_Segond_1910/Proverbes',
-  },
-  {
-    bookId: 'ws_fr_imitation',
-    wikiLang: 'fr',
-    wikiPage: 'Imitation_de_Jésus-Christ',
-    title: 'L’Imitation de Jésus-Christ',
-    author: 'Thomas à Kempis (Trad. Lamennais · Wikisource)',
-    category: 'livre',
-    description:
-      'Classique spirituel chrétien sur la vie intérieure, l’humilité et la paix du cœur, téléchargeable chapitre par chapitre.',
-    sourceUrl: 'https://fr.wikisource.org/wiki/Imitation_de_J%C3%A9sus-Christ',
-    epubUrl:
-      'https://ws-export.wmcloud.org/?lang=fr&format=epub&page=Imitation_de_J%C3%A9sus-Christ',
-    pdfUrl:
-      'https://ws-export.wmcloud.org/?lang=fr&format=pdf&page=Imitation_de_J%C3%A9sus-Christ',
-  },
-  {
-    bookId: 'ws_fr_confessions_8',
-    wikiLang: 'fr',
-    wikiPage: 'Les_Confessions_(Augustin)/Livre_huitième',
-    title: 'Les Confessions — Livre VIII (La Conversion)',
-    author: 'Saint Augustin d’Hippone (Wikisource)',
-    category: 'livre',
-    description:
-      'Le célèbre récit de la conversion de Saint Augustin (« Prends et lis »), issu des Œuvres complètes sur Wikisource.',
-    sourceUrl: 'https://fr.wikisource.org/wiki/Les_Confessions_(Augustin)/Livre_huiti%C3%A8me',
-    epubUrl:
-      'https://ws-export.wmcloud.org/?lang=fr&format=epub&page=Les_Confessions_(Augustin)/Livre_huiti%C3%A8me',
-    pdfUrl:
-      'https://ws-export.wmcloud.org/?lang=fr&format=pdf&page=Les_Confessions_(Augustin)/Livre_huiti%C3%A8me',
-  },
-  {
-    bookId: 'ws_fr_pensees',
-    wikiLang: 'fr',
-    wikiPage: 'Pensées_(Pascal)',
-    title: 'Pensées sur la religion',
-    author: 'Blaise Pascal (Wikisource)',
-    category: 'etude',
-    description:
-      'Réflexions philosophiques et chrétiennes de Blaise Pascal sur la foi, la grâce et la condition humaine.',
-    sourceUrl: 'https://fr.wikisource.org/wiki/Pens%C3%A9es_(Pascal)',
-    epubUrl: 'https://ws-export.wmcloud.org/?lang=fr&format=epub&page=Pens%C3%A9es_(Pascal)',
-    pdfUrl: 'https://ws-export.wmcloud.org/?lang=fr&format=pdf&page=Pens%C3%A9es_(Pascal)',
-  },
-  {
-    bookId: 'ws_fr_vie_devote',
-    wikiLang: 'fr',
-    wikiPage: 'Introduction_à_la_vie_dévote',
-    title: 'Introduction à la vie dévote',
-    author: 'Saint François de Sales (Wikisource)',
-    category: 'livre',
-    description:
-      'Guide pratique de vie chrétienne au quotidien destiné à tous ceux qui vivent dans le monde.',
-    sourceUrl: 'https://fr.wikisource.org/wiki/Introduction_%C3%A0_la_vie_d%C3%A9vote',
-    epubUrl:
-      'https://ws-export.wmcloud.org/?lang=fr&format=epub&page=Introduction_%C3%A0_la_vie_d%C3%A9vote',
-    pdfUrl:
-      'https://ws-export.wmcloud.org/?lang=fr&format=pdf&page=Introduction_%C3%A0_la_vie_d%C3%A9vote',
-  },
-  {
-    bookId: 'ws_en_presence',
-    wikiLang: 'en',
-    wikiPage: 'The_Practice_of_the_Presence_of_God',
-    title: 'The Practice of the Presence of God',
-    author: 'Brother Lawrence (Wikisource)',
-    category: 'livre',
-    description:
-      'Classic Christian devotional letters & conversations on walking continuously in God’s presence.',
-    sourceUrl: 'https://en.wikisource.org/wiki/The_Practice_of_the_Presence_of_God',
-    epubUrl:
-      'https://ws-export.wmcloud.org/?lang=en&format=epub&page=The_Practice_of_the_Presence_of_God',
-    pdfUrl:
-      'https://ws-export.wmcloud.org/?lang=en&format=pdf&page=The_Practice_of_the_Presence_of_God',
-  },
-  {
-    bookId: 'ws_en_pilgrim',
-    wikiLang: 'en',
-    wikiPage: "The_Pilgrim's_Progress",
-    title: "The Pilgrim's Progress",
-    author: 'John Bunyan (Wikisource)',
-    category: 'livre',
-    description:
-      'Timeless Christian allegory of the spiritual journey from the City of Destruction to the Celestial City.',
-    sourceUrl: 'https://en.wikisource.org/wiki/The_Pilgrim%27s_Progress',
-    epubUrl:
-      'https://ws-export.wmcloud.org/?lang=en&format=epub&page=The_Pilgrim%27s_Progress',
-    pdfUrl:
-      'https://ws-export.wmcloud.org/?lang=en&format=pdf&page=The_Pilgrim%27s_Progress',
-  },
-];
 
 function extractCleanTextFromWikisourceHtml(html: string): {
   text: string;
@@ -287,9 +155,11 @@ export const SpiritualVaultModule: React.FC = () => {
 
   // Play Store Books search query
   const [playStoreQuery, setPlayStoreQuery] = useState('');
+  const [lastPlayStoreQuery, setLastPlayStoreQuery] = useState('');
 
-  // Online book search (Wikisource)
+  // Online book search (Wikisource + Open Library)
   const [onlineSearchQuery, setOnlineSearchQuery] = useState('');
+  const [lastOnlineQuery, setLastOnlineQuery] = useState('');
   const [onlineSearchLang, setOnlineSearchLang] = useState<'fr' | 'en'>(
     lang === 'en' ? 'en' : 'fr'
   );
@@ -412,53 +282,148 @@ export const SpiritualVaultModule: React.FC = () => {
     reloadData();
   };
 
+  const handlePlayStoreSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = playStoreQuery.trim();
+    if (!q) return;
+    setLastPlayStoreQuery(q);
+    // Clear search input immediately after search
+    setPlayStoreQuery('');
+    const targetUrl = `https://play.google.com/store/search?q=${encodeURIComponent(
+      `${q} livre bible`
+    )}&c=apps`;
+    const link = document.createElement('a');
+    link.href = targetUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleSearchOnlineBooks = async (e: React.FormEvent) => {
     e.preventDefault();
     const q = onlineSearchQuery.trim();
     if (!q) {
       setOnlineResults([]);
+      setLastOnlineQuery('');
       return;
     }
+
+    // Clear search field immediately after submitting search
+    setOnlineSearchQuery('');
+    setLastOnlineQuery(q);
     setIsSearchingOnline(true);
     setErrorBanner(null);
-    try {
-      const apiUrl = `https://${onlineSearchLang}.wikisource.org/w/api.php?action=opensearch&search=${encodeURIComponent(
-        q
-      )}&limit=10&format=json&origin=*`;
-      const res = await fetch(apiUrl);
-      const data = (await res.json()) as [string, string[], string[], string[]];
-      const titles = data[1] || [];
-      const urls = data[3] || [];
 
-      const entries: OnlineBookEntry[] = titles.map((title, idx) => {
-        const wikiPage = title.replace(/ /g, '_');
-        return {
-          bookId: `ws_${onlineSearchLang}_${wikiPage}`,
-          wikiLang: onlineSearchLang,
-          wikiPage,
-          title,
-          author: `Wikisource (${onlineSearchLang.toUpperCase()})`,
-          category: 'livre',
-          description: isEn
-            ? 'Public domain text found online on Wikisource.'
-            : 'Livre / texte du domaine public trouvé en ligne sur Wikisource.',
-          sourceUrl:
-            urls[idx] ||
-            `https://${onlineSearchLang}.wikisource.org/wiki/${encodeURIComponent(wikiPage)}`,
-          epubUrl: `https://ws-export.wmcloud.org/?lang=${onlineSearchLang}&format=epub&page=${encodeURIComponent(
-            wikiPage
-          )}`,
-          pdfUrl: `https://ws-export.wmcloud.org/?lang=${onlineSearchLang}&format=pdf&page=${encodeURIComponent(
-            wikiPage
-          )}`,
-        };
-      });
-      setOnlineResults(entries);
+    try {
+      const wsPromise = fetch(
+        `https://${onlineSearchLang}.wikisource.org/w/api.php?action=opensearch&search=${encodeURIComponent(
+          q
+        )}&limit=6&format=json&origin=*`
+      )
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+
+      const olPromise = fetch(
+        `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=8`
+      )
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+
+      const [wsData, olData] = await Promise.all([wsPromise, olPromise]);
+
+      const combined: OnlineBookEntry[] = [];
+
+      if (Array.isArray(wsData)) {
+        const titles = (wsData[1] as string[]) || [];
+        const urls = (wsData[3] as string[]) || [];
+        titles.forEach((title, idx) => {
+          const wikiPage = title.replace(/ /g, '_');
+          combined.push({
+            bookId: `ws_${onlineSearchLang}_${wikiPage}`,
+            source: 'wikisource',
+            wikiLang: onlineSearchLang,
+            wikiPage,
+            title,
+            author: `Wikisource (${onlineSearchLang.toUpperCase()})`,
+            category: 'livre',
+            description: isEn
+              ? 'Full public-domain text downloadable offline into your SHALOM Vault.'
+              : 'Livre / texte intégral téléchargeable hors-ligne dans votre Coffre SHALOM.',
+            sourceUrl:
+              urls[idx] ||
+              `https://${onlineSearchLang}.wikisource.org/wiki/${encodeURIComponent(wikiPage)}`,
+            epubUrl: `https://ws-export.wmcloud.org/?lang=${onlineSearchLang}&format=epub&page=${encodeURIComponent(
+              wikiPage
+            )}`,
+            pdfUrl: `https://ws-export.wmcloud.org/?lang=${onlineSearchLang}&format=pdf&page=${encodeURIComponent(
+              wikiPage
+            )}`,
+          });
+        });
+      }
+
+      if (olData && Array.isArray((olData as { docs?: unknown[] }).docs)) {
+        const docs = (olData as {
+          docs: Array<{
+            key?: string;
+            title?: string;
+            author_name?: string[];
+            first_publish_year?: number;
+            cover_i?: number;
+            ia?: string[];
+          }>;
+        }).docs;
+
+        docs.forEach((d) => {
+          if (!d.title || !d.key) return;
+          const workId = d.key.replace(/^\/works\//, '');
+          const iaId = Array.isArray(d.ia) && d.ia.length > 0 ? d.ia[0] : undefined;
+          const author =
+            Array.isArray(d.author_name) && d.author_name.length > 0
+              ? d.author_name.slice(0, 2).join(', ')
+              : isEn
+                ? 'Author'
+                : 'Auteur';
+          combined.push({
+            bookId: `ol_${workId}`,
+            source: 'openlibrary',
+            openLibraryKey: d.key,
+            iaId,
+            coverUrl: d.cover_i
+              ? `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg`
+              : undefined,
+            title: d.title,
+            author: d.first_publish_year ? `${author} (${d.first_publish_year})` : author,
+            category: 'livre',
+            description: iaId
+              ? isEn
+                ? 'Digital book available via Open Library & Internet Archive (EPUB/PDF/Online).'
+                : 'Livre numérique trouvé sur Open Library (consultation en ligne, EPUB/PDF ou fiche Coffre).'
+              : isEn
+                ? 'Book referenced on Open Library & Google Books.'
+                : 'Livre référencé sur Open Library et Google Livres.',
+            sourceUrl: `https://openlibrary.org${d.key}`,
+            epubUrl: iaId ? `https://archive.org/download/${iaId}/${iaId}.epub` : undefined,
+            pdfUrl: iaId ? `https://archive.org/download/${iaId}/${iaId}.pdf` : undefined,
+          });
+        });
+      }
+
+      setOnlineResults(combined);
+      if (combined.length === 0) {
+        setErrorBanner(
+          isEn
+            ? `No books found for « ${q} ». Try another title or search directly on Google Books / Play Store.`
+            : `Aucun livre trouvé pour « ${q} ». Essayez un autre titre ou recherchez sur Google Livres / Play Store.`
+        );
+      }
     } catch {
       setErrorBanner(
         isEn
-          ? 'Unable to search Wikisource online right now. Check your internet connection.'
-          : 'Impossible de rechercher sur Wikisource pour le moment. Vérifiez votre connexion internet.'
+          ? 'Unable to search books online right now. Check your internet connection.'
+          : 'Impossible de rechercher des livres en ligne pour le moment. Vérifiez votre connexion internet.'
       );
     } finally {
       setIsSearchingOnline(false);
@@ -470,24 +435,41 @@ export const SpiritualVaultModule: React.FC = () => {
     if (existing) {
       setNotice(
         isEn
-          ? `« ${book.title} » is already downloaded in your Vault.`
-          : `« ${book.title} » est déjà téléchargé dans votre Coffre.`
+          ? `« ${book.title} » is already saved in your Vault.`
+          : `« ${book.title} » est déjà enregistré dans votre Coffre.`
       );
       return;
     }
 
     setDownloadingBookId(book.bookId);
     setDownloadProgressMsg(
-      isEn ? 'Downloading book from Wikisource...' : 'Téléchargement du livre depuis Wikisource...'
+      isEn ? 'Downloading book into your Vault...' : 'Téléchargement du livre dans votre Coffre...'
     );
     setErrorBanner(null);
 
     try {
-      const bodyText = await fetchWikisourceBookText(
-        book.wikiLang,
-        book.wikiPage,
-        (msg) => setDownloadProgressMsg(msg)
-      );
+      let bodyText = '';
+      if (book.source === 'wikisource' && book.wikiLang && book.wikiPage) {
+        bodyText = await fetchWikisourceBookText(
+          book.wikiLang,
+          book.wikiPage,
+          (msg) => setDownloadProgressMsg(msg)
+        );
+      } else {
+        const googleUrl = `https://books.google.com/books?q=${encodeURIComponent(
+          `${book.title} ${book.author}`
+        )}`;
+        bodyText = [
+          book.description,
+          '',
+          `Lien de lecture en ligne : ${book.sourceUrl}`,
+          `Rechercher sur Google Livres : ${googleUrl}`,
+          book.epubUrl ? `Téléchargement EPUB : ${book.epubUrl}` : '',
+          book.pdfUrl ? `Téléchargement PDF : ${book.pdfUrl}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n');
+      }
 
       const fullContent = `${book.title}\n${book.author}\nSource en ligne : ${book.sourceUrl}\n\n========================================\n\n${bodyText}`;
       const blob = new Blob([fullContent], { type: 'text/plain;charset=utf-8' });
@@ -505,7 +487,7 @@ export const SpiritualVaultModule: React.FC = () => {
         sizeBytes: blob.size,
         blobKey,
         textContent: fullContent,
-        isBuiltInBook: true,
+        isBuiltInBook: false,
         bookId: book.bookId,
         sourceUrl: book.sourceUrl,
         epubUrl: book.epubUrl,
@@ -515,16 +497,16 @@ export const SpiritualVaultModule: React.FC = () => {
 
       setNotice(
         isEn
-          ? `« ${book.title} » downloaded inside SHALOM! Ready to read offline, send to phone, or share.`
-          : `« ${book.title} » téléchargé dans votre Coffre Spirituel ! Vous pouvez maintenant le lire hors-ligne, l’envoyer sur votre téléphone ou le partager.`
+          ? `« ${book.title} » saved inside your SHALOM Vault!`
+          : `« ${book.title} » enregistré dans votre Coffre Spirituel ! Vous pouvez le lire, l’envoyer sur votre téléphone ou le partager.`
       );
       reloadData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erreur réseau';
       setErrorBanner(
         isEn
-          ? `Could not download book inside app (${msg}). Use the EPUB link directly.`
-          : `Impossible de télécharger le texte dans l’application (${msg}). Utilisez le lien EPUB ci-dessous.`
+          ? `Could not download book inside app (${msg}). Use the direct link or import the downloaded file.`
+          : `Impossible de télécharger le texte dans l’application (${msg}). Utilisez le lien direct ou importez le fichier.`
       );
     } finally {
       setDownloadingBookId(null);
@@ -657,12 +639,20 @@ export const SpiritualVaultModule: React.FC = () => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
   };
 
-  const displayedOnlineBooks =
-    onlineResults.length > 0 ? onlineResults : ONLINE_BOOKS_CATALOG;
+  const displayedOnlineBooks = onlineResults;
 
-  const playStoreHref = playStoreQuery.trim()
-    ? `https://play.google.com/store/search?q=${encodeURIComponent(playStoreQuery.trim())}&c=books`
-    : 'https://play.google.com/store/books';
+  const playStoreAppsHref = lastPlayStoreQuery
+    ? `https://play.google.com/store/search?q=${encodeURIComponent(
+        `${lastPlayStoreQuery} livre bible`
+      )}&c=apps`
+    : 'https://play.google.com/store/search?q=livres+chretiens+bible+ebook&c=apps';
+
+  const playBooksAppInstallHref =
+    'https://play.google.com/store/apps/details?id=com.google.android.apps.books';
+
+  const googleBooksWebHref = lastPlayStoreQuery
+    ? `https://books.google.com/books?q=${encodeURIComponent(lastPlayStoreQuery)}`
+    : 'https://books.google.com/';
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -965,61 +955,79 @@ export const SpiritualVaultModule: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 2: LIVRES EN LIGNE (GOOGLE PLAY STORE + WIKISOURCE RÉEL) */}
+      {/* TAB 2: LIVRES EN LIGNE (PLAY STORE SANS BLOCAGE PAYS + GOOGLE LIVRES + RECHERCHE DIRECTE) */}
       {subTab === 'library' && (
         <div className="space-y-5">
-          {/* Google Play Store Books Direct Card */}
+          {/* Google Play Store & Google Livres Card */}
           <div className="p-5 rounded-3xl bg-gradient-to-br from-[#0b1f42] via-[#132d5e] to-[#1a3c7c] text-white border border-blue-900/60 shadow-lg space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-xs font-bold text-amber-300 uppercase tracking-wider">
                   <ShoppingBag className="w-4 h-4" />
-                  <span>Google Play Store Livres</span>
+                  <span>Play Store & Google Livres</span>
                 </div>
                 <h3 className="text-base sm:text-lg font-extrabold font-display">
                   {isEn
-                    ? 'Open Play Store Books & Store Downloaded Books in Vault'
-                    : 'Ouvrir Play Store Livres & importer vos livres téléchargés'}
+                    ? 'Find Books on Play Store & Google Books (All Countries)'
+                    : 'Play Store & Google Livres (accessible dans tous les pays)'}
                 </h3>
                 <p className="text-xs text-blue-100 leading-relaxed max-w-2xl">
                   {isEn
-                    ? 'Browse Google Play Books, download your book, then import it directly into your SHALOM Vault — or send any Vault book back to your phone.'
-                    : 'Accédez directement aux livres sur Google Play Store, téléchargez votre livre puis importez le fichier dans votre Coffre SHALOM pour le lire, l’envoyer sur votre téléphone ou le partager.'}
+                    ? 'Open Play Store book readers, browse Google Books worldwide without country restrictions, and import any downloaded file into your SHALOM Vault.'
+                    : 'Ouvrez Play Store sans erreur de pays, explorez Google Livres ou téléchargez un livre puis importez-le dans votre Coffre SHALOM pour le lire, l’envoyer sur votre téléphone ou le partager.'}
                 </p>
               </div>
 
-              <a
-                href="https://play.google.com/store/books"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-2 shrink-0 self-start sm:self-auto transition"
-              >
-                <ExternalLink className="w-4 h-4" />
-                <span>{isEn ? 'Open Play Store' : 'Ouvrir Play Store Livres'}</span>
-              </a>
+              <div className="flex flex-wrap items-center gap-2 shrink-0 self-start sm:self-auto">
+                <a
+                  href={playStoreAppsHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span>{isEn ? 'Open Play Store' : 'Ouvrir Play Store'}</span>
+                </a>
+                <a
+                  href={playBooksAppInstallHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-semibold text-xs flex items-center gap-1.5 transition"
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>Play Livres (App)</span>
+                </a>
+                <a
+                  href={googleBooksWebHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-semibold text-xs flex items-center gap-1.5 transition"
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>Google Livres</span>
+                </a>
+              </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2 text-xs">
+            <form onSubmit={handlePlayStoreSearch} className="flex flex-col sm:flex-row gap-2 text-xs">
               <input
                 type="text"
                 value={playStoreQuery}
                 onChange={(e) => setPlayStoreQuery(e.target.value)}
                 placeholder={
                   isEn
-                    ? 'Search book title on Play Store (e.g. Bible, Prayer, Joyce Meyer...)'
-                    : 'Chercher un titre sur Play Store (ex: Bible, Prière, Foi...)'
+                    ? 'Search Play Store book / Bible reader (clears after search)...'
+                    : 'Chercher un livre / lecteur sur Play Store...'
                 }
                 className="flex-1 px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder:text-blue-200/70"
               />
-              <a
-                href={playStoreHref}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="submit"
                 className="px-4 py-2.5 rounded-xl bg-white text-[#0b1f42] hover:bg-blue-50 font-bold flex items-center justify-center gap-1.5"
               >
                 <Search className="w-3.5 h-3.5" />
                 <span>{isEn ? 'Search Play Store' : 'Rechercher sur Play Store'}</span>
-              </a>
+              </button>
               <label className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center justify-center gap-1.5 cursor-pointer">
                 <Upload className="w-3.5 h-3.5" />
                 <span>
@@ -1033,10 +1041,10 @@ export const SpiritualVaultModule: React.FC = () => {
                   className="hidden"
                 />
               </label>
-            </div>
+            </form>
           </div>
 
-          {/* Direct In-App Wikisource Search */}
+          {/* Direct In-App Book Search (Open Library + Wikisource) — No hardcoded books */}
           <form
             onSubmit={handleSearchOnlineBooks}
             className="p-4 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 flex flex-col sm:flex-row gap-2.5 text-xs"
@@ -1046,8 +1054,8 @@ export const SpiritualVaultModule: React.FC = () => {
               onChange={(e) => setOnlineSearchLang(e.target.value as 'fr' | 'en')}
               className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 font-semibold"
             >
-              <option value="fr">Wikisource FR</option>
-              <option value="en">Wikisource EN</option>
+              <option value="fr">Français</option>
+              <option value="en">English</option>
             </select>
             <div className="relative flex-1">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1057,8 +1065,8 @@ export const SpiritualVaultModule: React.FC = () => {
                 onChange={(e) => setOnlineSearchQuery(e.target.value)}
                 placeholder={
                   isEn
-                    ? 'Search direct downloadable books inside SHALOM...'
-                    : 'Rechercher un livre directement téléchargeable dans votre coffre (Psaumes, Augustin...)'
+                    ? 'Search books online to download to Vault...'
+                    : 'Rechercher un livre en ligne (ex: Bible, Psaumes, Prière, Augustin)...'
                 }
                 className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800"
               />
@@ -1080,14 +1088,21 @@ export const SpiritualVaultModule: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setOnlineResults([]);
-                  setOnlineSearchQuery('');
+                  setLastOnlineQuery('');
                 }}
                 className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 font-semibold"
               >
-                {isEn ? 'Catalog' : 'Catalogue'}
+                {isEn ? 'Clear' : 'Effacer'}
               </button>
             )}
           </form>
+
+          {lastOnlineQuery && (
+            <div className="text-xs text-slate-500 dark:text-slate-400 px-1">
+              {isEn ? 'Search results for:' : 'Résultats de recherche pour :'}{' '}
+              <strong className="text-slate-800 dark:text-slate-200">« {lastOnlineQuery} »</strong>
+            </div>
+          )}
 
           {downloadProgressMsg && (
             <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 text-xs font-semibold text-blue-800 dark:text-blue-200 flex items-center gap-2">
@@ -1096,109 +1111,150 @@ export const SpiritualVaultModule: React.FC = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {displayedOnlineBooks.map((book) => {
-              const vaultCopy = vaultDocuments.find((d) => d.bookId === book.bookId);
-              const isBusy = downloadingBookId === book.bookId;
+          {displayedOnlineBooks.length === 0 && !isSearchingOnline ? (
+            <div className="py-10 px-6 text-center rounded-3xl bg-white dark:bg-[#0c1631] border border-dashed border-slate-300 dark:border-slate-800 space-y-2">
+              <BookOpen className="w-8 h-8 text-blue-700 dark:text-blue-400 mx-auto opacity-80" />
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                {isEn ? 'Search for a book to get started' : 'Recherchez un livre ou ouvrez Play Store'}
+              </h4>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                {isEn
+                  ? 'Type any book title above to search online libraries, or open Play Store / Google Books and import your downloaded files into your Vault.'
+                  : 'Saisissez le titre d’un livre ci-dessus pour rechercher et télécharger dans votre Coffre, ou ouvrez Play Store / Google Livres puis importez le fichier.'}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {displayedOnlineBooks.map((book) => {
+                const vaultCopy = vaultDocuments.find((d) => d.bookId === book.bookId);
+                const isBusy = downloadingBookId === book.bookId;
 
-              return (
-                <div
-                  key={book.bookId}
-                  className="p-5 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 space-y-3 flex flex-col justify-between shadow-xs"
-                >
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                        Wikisource ({book.wikiLang.toUpperCase()}) · {book.category}
-                      </span>
-                      <a
-                        href={book.sourceUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-1 font-semibold"
-                      >
-                        <span>{isEn ? 'Original link' : 'Lien source'}</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
+                return (
+                  <div
+                    key={book.bookId}
+                    className="p-5 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 space-y-3 flex flex-col justify-between shadow-xs"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                          {book.source === 'wikisource'
+                            ? `Wikisource (${(book.wikiLang || 'fr').toUpperCase()})`
+                            : 'Open Library'}{' '}
+                          · {book.category}
+                        </span>
+                        <a
+                          href={book.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-1 font-semibold"
+                        >
+                          <span>{isEn ? 'Open link' : 'Ouvrir'}</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+
+                      <div className="flex items-start gap-3">
+                        {book.coverUrl && (
+                          <img
+                            src={book.coverUrl}
+                            alt={book.title}
+                            className="w-12 h-16 object-cover rounded-lg border border-slate-200 dark:border-slate-800 shrink-0"
+                            referrerPolicy="no-referrer"
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-start gap-1.5">
+                            {!book.coverUrl && (
+                              <BookOpen className="w-4 h-4 text-blue-700 dark:text-blue-400 shrink-0 mt-0.5" />
+                            )}
+                            <span>{book.title}</span>
+                          </h3>
+                          <p className="text-xs font-medium text-slate-500 mt-0.5">{book.author}</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                        {book.description}
+                      </p>
                     </div>
 
-                    <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-start gap-2">
-                      <BookOpen className="w-4 h-4 text-blue-700 dark:text-blue-400 shrink-0 mt-0.5" />
-                      <span>{book.title}</span>
-                    </h3>
-                    <p className="text-xs font-medium text-slate-500">{book.author}</p>
-                    <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                      {book.description}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => handleDownloadOnlineBookIntoVault(book)}
-                      className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-                        vaultCopy
-                          ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50'
-                          : 'bg-blue-700 hover:bg-blue-800 text-white'
-                      }`}
-                    >
-                      {isBusy ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : vaultCopy ? (
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                      ) : (
-                        <Download className="w-3.5 h-3.5" />
-                      )}
-                      <span>
-                        {isBusy
-                          ? isEn
-                            ? 'Downloading...'
-                            : 'Téléchargement...'
-                          : vaultCopy
-                            ? isEn
-                              ? 'In My Vault'
-                              : 'Dans mon coffre'
-                            : isEn
-                              ? 'Download to Vault'
-                              : 'Ajouter à mon coffre'}
-                      </span>
-                    </button>
-
-                    {vaultCopy ? (
+                    <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
                       <button
                         type="button"
-                        onClick={() => handleSaveDocToPhone(vaultCopy)}
-                        className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold flex items-center gap-1.5"
+                        disabled={isBusy}
+                        onClick={() => handleDownloadOnlineBookIntoVault(book)}
+                        className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+                          vaultCopy
+                            ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50'
+                            : 'bg-blue-700 hover:bg-blue-800 text-white'
+                        }`}
                       >
-                        <Smartphone className="w-3.5 h-3.5" />
-                        <span>{isEn ? 'Send to Phone' : 'Envoyer sur téléphone'}</span>
+                        {isBusy ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : vaultCopy ? (
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        ) : (
+                          <Download className="w-3.5 h-3.5" />
+                        )}
+                        <span>
+                          {isBusy
+                            ? isEn
+                              ? 'Downloading...'
+                              : 'Téléchargement...'
+                            : vaultCopy
+                              ? isEn
+                                ? 'In My Vault'
+                                : 'Dans mon coffre'
+                              : isEn
+                                ? 'Add to Vault'
+                                : 'Ajouter à mon coffre'}
+                        </span>
                       </button>
-                    ) : (
-                      <a
-                        href={book.epubUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold flex items-center gap-1.5"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>{isEn ? 'EPUB to Phone' : 'Téléphone (EPUB)'}</span>
-                      </a>
-                    )}
 
-                    <button
-                      type="button"
-                      onClick={() => handleShareOnlineBook(book)}
-                      className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5"
-                    >
-                      <Share2 className="w-3.5 h-3.5" />
-                      <span>{isEn ? 'Share' : 'Partager'}</span>
-                    </button>
+                      {vaultCopy ? (
+                        <button
+                          type="button"
+                          onClick={() => handleSaveDocToPhone(vaultCopy)}
+                          className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold flex items-center gap-1.5"
+                        >
+                          <Smartphone className="w-3.5 h-3.5" />
+                          <span>{isEn ? 'Send to Phone' : 'Envoyer sur téléphone'}</span>
+                        </button>
+                      ) : book.epubUrl ? (
+                        <a
+                          href={book.epubUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold flex items-center gap-1.5"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>{isEn ? 'EPUB to Phone' : 'Téléphone (EPUB)'}</span>
+                        </a>
+                      ) : (
+                        <a
+                          href={`https://books.google.com/books?q=${encodeURIComponent(book.title)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold flex items-center gap-1.5"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Google Livres</span>
+                        </a>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => handleShareOnlineBook(book)}
+                        className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5"
+                      >
+                        <Share2 className="w-3.5 h-3.5" />
+                        <span>{isEn ? 'Share' : 'Partager'}</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

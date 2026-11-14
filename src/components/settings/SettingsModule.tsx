@@ -21,11 +21,31 @@ import {
   Loader2,
   Sparkles,
   Globe,
+  Bell,
+  BellOff,
+  Clock,
+  Info,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  FileText,
+  ShieldCheck,
+  Lightbulb,
+  Eraser,
 } from 'lucide-react';
 import { dbService, STORES } from '../../services/db';
 import { useShalomDB } from '../../hooks/useShalomDB';
 import { useLanguage, WORLD_LANGUAGES } from '../../contexts/LanguageContext';
 import { useModuleSubView } from '../../contexts/NavigationContext';
+import { Modal } from '../common/Modal';
+import {
+  getNotificationSettings,
+  saveNotificationSettings,
+  getUsageTipsEnabled,
+  setUsageTipsEnabled,
+  requestReminderNotificationPermission,
+  showLocalReminderNotification,
+} from '../../services/notifications';
 import {
   hashSecret,
   getSecurityConfig,
@@ -39,6 +59,7 @@ import {
   LockableFeatureId,
   SecurityConfig,
   AppLanguage,
+  NotificationSettings,
 } from '../../types';
 import { PatternGrid } from '../security/PatternGrid';
 
@@ -91,6 +112,32 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [draftLockedFeatures, setDraftLockedFeatures] = useState<LockableFeatureId[]>(
     () => getSecurityConfig().lockedFeatures
   );
+  const [draftAutoLockMinutes, setDraftAutoLockMinutes] = useState<number>(
+    () => getSecurityConfig().autoLockMinutes || 0
+  );
+
+  // Notification Reminders & Usage Tips State
+  const [notifSettings, setNotifSettings] = useState<NotificationSettings>(() =>
+    getNotificationSettings()
+  );
+  const [notifPermission, setNotifPermission] = useState<string>(() =>
+    typeof window !== 'undefined' && 'Notification' in window
+      ? Notification.permission
+      : 'unsupported'
+  );
+  const [notifNotice, setNotifNotice] = useState<string | null>(null);
+  const [showUsageTips, setShowUsageTips] = useState<boolean>(() => getUsageTipsEnabled());
+
+  // About / Connection / Update / Legal Modals State
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+  const [updateCheckStatus, setUpdateCheckStatus] = useState<
+    'idle' | 'checking' | 'up-to-date' | 'available' | 'offline' | 'error'
+  >('idle');
+  const [updateCheckMessage, setUpdateCheckMessage] = useState<string | null>(null);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
@@ -108,6 +155,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
     persisted: boolean;
   }>({ usageMB: 0, quotaMB: 1000, percentage: 0, persisted: false });
   const [backupLoading, setBackupLoading] = useState(false);
+  const [cacheClearing, setCacheClearing] = useState(false);
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
   const [storageActionMessage, setStorageActionMessage] = useState<string | null>(null);
 
@@ -120,6 +168,16 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
     }
     dbService.getStorageEstimate().then(setStorageStats);
   }, [userProfile]);
+
+  useEffect(() => {
+    const syncConnection = () => setIsOnline(navigator.onLine);
+    window.addEventListener('online', syncConnection);
+    window.addEventListener('offline', syncConnection);
+    return () => {
+      window.removeEventListener('online', syncConnection);
+      window.removeEventListener('offline', syncConnection);
+    };
+  }, []);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -179,8 +237,10 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         dashboardVerseText: userForm.dashboardVerseText?.trim() || '',
         dashboardVerseRef: userForm.dashboardVerseRef?.trim() || '',
         language: chosenLang,
+        showUsageTips,
       };
       setLang(chosenLang);
+      setUsageTipsEnabled(showUsageTips);
       await Promise.all([
         dbService.put(STORES.PROFILES, cleaned),
         new Promise((resolve) => setTimeout(resolve, 350)),
@@ -188,8 +248,8 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
       setUserForm(cleaned);
       setSaveNotice(
         chosenLang === 'en'
-          ? 'Your profile, language, and home verse have been saved.'
-          : 'Vos paramètres, langue, profil et verset d’accueil ont bien été enregistrés.'
+          ? 'Your profile, language, and preferences have been saved.'
+          : 'Vos paramètres, langue, profil et préférences ont bien été enregistrés.'
       );
       reloadData();
     } catch {
@@ -270,6 +330,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         secretHash: finalHash,
         lockOnLaunch: draftLockOnLaunch,
         lockedFeatures: draftLockedFeatures,
+        autoLockMinutes: draftAutoLockMinutes,
       };
 
       await new Promise((resolve) => setTimeout(resolve, 350));
@@ -297,14 +358,154 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
       secretHash: '',
       lockOnLaunch: false,
       lockedFeatures: [],
+      autoLockMinutes: 0,
     };
     saveSecurityConfig(disabled);
     setSecurityConfig(disabled);
     setDraftLockOnLaunch(false);
     setDraftLockedFeatures([]);
+    setDraftAutoLockMinutes(0);
     onSecurityChanged(disabled);
     setAppSessionUnlocked(true);
     setSecurityNotice('Protection désactivée.');
+  };
+
+  const handleUpdateReminder = async (
+    key: keyof NotificationSettings,
+    patch: Partial<{ enabled: boolean; time: string }>
+  ) => {
+    const next: NotificationSettings = {
+      ...notifSettings,
+      [key]: {
+        ...notifSettings[key],
+        ...patch,
+      },
+    };
+    setNotifSettings(next);
+    saveNotificationSettings(next);
+
+    if (patch.enabled) {
+      const perm = await requestReminderNotificationPermission();
+      setNotifPermission(perm);
+      if (perm === 'granted') {
+        setNotifNotice('Rappel activé et enregistré.');
+      } else if (perm === 'denied') {
+        setNotifNotice(
+          'Rappel enregistré. Les notifications système sont bloquées par le navigateur, mais le rappel s’affichera directement dans SHALOM.'
+        );
+      } else {
+        setNotifNotice('Rappel enregistré (alerte intégrée dans SHALOM active).');
+      }
+    } else if (patch.enabled === false) {
+      setNotifNotice('Ce rappel a été désactivé.');
+    } else {
+      setNotifNotice('Heure du rappel mise à jour.');
+    }
+  };
+
+  const handleToggleUsageTips = (nextValue: boolean) => {
+    setShowUsageTips(nextValue);
+    setUsageTipsEnabled(nextValue);
+    setUserForm((prev) => ({ ...prev, showUsageTips: nextValue }));
+    setSaveNotice(
+      nextValue
+        ? 'Les conseils d’utilisation sont maintenant activés sur l’accueil.'
+        : 'Les conseils d’utilisation ont été masqués.'
+    );
+  };
+
+  const handleClearCacheOnly = async () => {
+    setCacheClearing(true);
+    setStorageActionMessage(null);
+    try {
+      let deletedCount = 0;
+      if (typeof window !== 'undefined' && 'caches' in window) {
+        const keys = await window.caches.keys();
+        await Promise.all(keys.map((key) => window.caches.delete(key)));
+        deletedCount = keys.length;
+      }
+      const stats = await dbService.getStorageEstimate();
+      setStorageStats(stats);
+      setStorageActionMessage(
+        deletedCount > 0
+          ? `Cache vidé (${deletedCount} espace(s) de cache supprimé(s)). Toutes vos données personnelles (prières, notes, contacts, livres et médias) sont intactes.`
+          : 'Aucun fichier en cache à supprimer. Vos données personnelles restent 100 % intactes.'
+      );
+    } catch {
+      setStorageActionMessage(
+        'Impossible d’accéder au cache système dans cet environnement, mais vos données personnelles n’ont pas été modifiées.'
+      );
+    } finally {
+      setCacheClearing(false);
+    }
+  };
+
+  const handleCheckForUpdates = async () => {
+    if (!navigator.onLine) {
+      setUpdateCheckStatus('offline');
+      setUpdateCheckMessage(
+        'Connexion Internet requise pour vérifier la disponibilité d’une nouvelle version.'
+      );
+      return;
+    }
+
+    setUpdateCheckStatus('checking');
+    setUpdateCheckMessage('Vérification auprès du serveur en cours...');
+    try {
+      let hasNewSw = false;
+      if ('serviceWorker' in navigator) {
+        try {
+          const reg = await navigator.serviceWorker.getRegistration();
+          if (reg) {
+            await reg.update();
+            if (reg.waiting || reg.installing) {
+              hasNewSw = true;
+            }
+          }
+        } catch {
+          // ignore SW update check errors in non-SW environments
+        }
+      }
+
+      let hasNewHtmlBundle = false;
+      try {
+        const res = await fetch(`./index.html?check=${Date.now()}`, { cache: 'no-store' });
+        if (res.ok) {
+          const html = await res.text();
+          const remoteMatches = Array.from(html.matchAll(/assets\/index-[A-Za-z0-9_-]+\.js/g)).map(
+            (m) => m[0]
+          );
+          const currentScripts = Array.from(document.querySelectorAll('script[src]')).map(
+            (s) => s.getAttribute('src') || ''
+          );
+          if (remoteMatches.length > 0 && currentScripts.some((s) => s.includes('assets/index-'))) {
+            const matchesCurrent = remoteMatches.some((rm) =>
+              currentScripts.some((cs) => cs.includes(rm))
+            );
+            if (!matchesCurrent) {
+              hasNewHtmlBundle = true;
+            }
+          }
+        }
+      } catch {
+        // ignore fetch issue if local dev or offline
+      }
+
+      if (hasNewSw || hasNewHtmlBundle) {
+        setUpdateCheckStatus('available');
+        setUpdateCheckMessage(
+          'Une nouvelle version de SHALOM est disponible ! Appuyez sur « Actualiser l’application » pour l’appliquer.'
+        );
+      } else {
+        setUpdateCheckStatus('up-to-date');
+        setUpdateCheckMessage(
+          `Vous utilisez déjà la dernière version disponible (${__SHALOM_APP_VERSION__}).`
+        );
+      }
+    } catch {
+      setUpdateCheckStatus('error');
+      setUpdateCheckMessage('Impossible de joindre le serveur de mise à jour pour le moment.');
+    }
   };
 
   const handleDownloadBackup = async () => {
@@ -378,9 +579,11 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
 
         <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 self-start sm:self-auto">
           {[
-            { id: 'general', label: 'Mon Profil' },
-            { id: 'security', label: 'Protection au choix' },
-            { id: 'backup', label: 'Sauvegarde' },
+            { id: 'general', label: 'Profil & Apparence' },
+            { id: 'notifications', label: 'Notifications' },
+            { id: 'security', label: 'Sécurité' },
+            { id: 'backup', label: 'Sauvegarde & Cache' },
+            { id: 'about', label: 'À propos' },
           ].map((t) => (
             <button
               key={t.id}
@@ -611,6 +814,34 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </button>
                 </div>
               </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1">Aide et conseils d’utilisation</label>
+                <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs">
+                  <div className="flex items-start gap-2.5">
+                    <Lightbulb className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-semibold text-slate-900 dark:text-white block">
+                        Afficher les conseils d’utilisation
+                      </span>
+                      <span className="text-[11px] text-slate-500">
+                        Astuces pratiques affichées sur l’écran d’accueil de SHALOM
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleUsageTips(!showUsageTips)}
+                    className={`px-3 py-1.5 rounded-lg border font-bold shrink-0 transition ${
+                      showUsageTips
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    {showUsageTips ? 'Activés' : 'Désactivés'}
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -682,6 +913,155 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 1b. Paramètres de Notifications & Rappels */}
+      {subTab === 'notifications' && (
+        <div className="max-w-2xl space-y-5">
+          <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 space-y-5 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 font-bold text-xs uppercase tracking-wider">
+                  <Bell className="w-4 h-4" />
+                  <span>Rappels quotidiens de vie spirituelle</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Activez, désactivez séparément et personnalisez l’heure de chaque rappel.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const perm = await requestReminderNotificationPermission();
+                  setNotifPermission(perm);
+                  const sent = showLocalReminderNotification(
+                    'SHALOM · Test de rappel',
+                    'Vos rappels spirituels quotidiens sont prêts.'
+                  );
+                  setNotifNotice(
+                    sent
+                      ? 'Notification de test envoyée avec succès.'
+                      : 'Aperçu enregistré. Si l’appareil bloque les alertes système, le rappel s’affichera en bannière dans l’application.'
+                  );
+                }}
+                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 self-start sm:self-auto"
+              >
+                <Bell className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span>Tester une notification</span>
+              </button>
+            </div>
+
+            {notifNotice && (
+              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-xs font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{notifNotice}</span>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {[
+                {
+                  key: 'dailyPrayer' as const,
+                  title: 'Rappel quotidien de prière',
+                  desc: 'Un moment dédié chaque jour pour votre vie de prière et d’intercession.',
+                },
+                {
+                  key: 'meditation' as const,
+                  title: 'Rappel de méditation',
+                  desc: 'Une pause calme pour méditer la Parole et cultiver la paix intérieure.',
+                },
+                {
+                  key: 'bibleReading' as const,
+                  title: 'Rappel de lecture biblique',
+                  desc: 'Un rendez-vous régulier pour lire votre passage biblique du jour.',
+                },
+              ].map((item) => {
+                const cfg = notifSettings[item.key];
+                return (
+                  <div
+                    key={item.key}
+                    className={`p-4 rounded-xl border transition space-y-3 ${
+                      cfg.enabled
+                        ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900/60'
+                        : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2.5">
+                        {cfg.enabled ? (
+                          <Bell className="w-4 h-4 text-blue-700 dark:text-blue-400 shrink-0 mt-0.5" />
+                        ) : (
+                          <BellOff className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                        )}
+                        <div>
+                          <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                            {item.title}
+                          </h4>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            {item.desc}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateReminder(item.key, { enabled: !cfg.enabled })}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 border transition ${
+                          cfg.enabled
+                            ? 'bg-blue-700 text-white border-blue-700'
+                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        {cfg.enabled ? 'Activé' : 'Désactivé'}
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/70 dark:border-slate-800">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Heure personnalisée :</span>
+                      </label>
+                      <input
+                        type="time"
+                        value={cfg.time}
+                        onChange={(e) => handleUpdateReminder(item.key, { time: e.target.value })}
+                        className="px-3 py-1.5 text-xs font-bold rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+              <span>
+                Autorisation système :{' '}
+                <strong className="text-slate-800 dark:text-slate-200">
+                  {notifPermission === 'granted'
+                    ? 'Accordée'
+                    : notifPermission === 'denied'
+                    ? 'Refusée (alerte interne active)'
+                    : notifPermission === 'unsupported'
+                    ? 'Non supportée (alerte interne active)'
+                    : 'Non demandée'}
+                </strong>
+              </span>
+              {notifPermission === 'default' && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const perm = await requestReminderNotificationPermission();
+                    setNotifPermission(perm);
+                  }}
+                  className="text-blue-700 dark:text-blue-400 font-bold hover:underline"
+                >
+                  Autoriser les notifications
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -915,6 +1295,37 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
               </div>
             </div>
 
+            <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                3. Verrouillage automatique après inactivité
+              </h3>
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  <Clock className="w-4 h-4 text-blue-700 dark:text-blue-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                      Délai d’inactivité avant verrouillage
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      Verrouille automatiquement l’application si aucune action n’est effectuée
+                    </span>
+                  </div>
+                </div>
+                <select
+                  value={draftAutoLockMinutes}
+                  onChange={(e) => setDraftAutoLockMinutes(Number(e.target.value))}
+                  className="px-3 py-2 text-xs font-semibold rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white shrink-0"
+                >
+                  <option value={0}>Désactivé (Jamais)</option>
+                  <option value={1}>Après 1 minute</option>
+                  <option value={3}>Après 3 minutes</option>
+                  <option value={5}>Après 5 minutes</option>
+                  <option value={15}>Après 15 minutes</option>
+                  <option value={30}>Après 30 minutes</option>
+                </select>
+              </div>
+            </div>
+
             <div className="space-y-3 pt-2">
               {securityNotice && (
                 <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-xs font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
@@ -922,7 +1333,17 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   <span>{securityNotice}</span>
                 </div>
               )}
-              <div className="flex justify-end">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {securityConfig.isEnabled && (
+                  <button
+                    type="button"
+                    onClick={onLockNow}
+                    className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-xs font-semibold flex items-center gap-1.5"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Verrouiller maintenant</span>
+                  </button>
+                )}
                 <button
                   type="submit"
                   disabled={isSavingSecurity}
@@ -1019,7 +1440,25 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                 >
                   Optimiser la mémoire
                 </button>
+
+                <button
+                  type="button"
+                  onClick={handleClearCacheOnly}
+                  disabled={cacheClearing}
+                  className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60"
+                >
+                  {cacheClearing ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Eraser className="w-3.5 h-3.5" />
+                  )}
+                  <span>Vider uniquement le cache</span>
+                </button>
               </div>
+
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                « Vider uniquement le cache » supprime les fichiers temporaires hors-ligne de l’application sans jamais effacer vos prières, autels, livres, médias ou contacts.
+              </p>
 
               {storageActionMessage && (
                 <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
@@ -1061,6 +1500,231 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
           </div>
         </div>
       )}
+
+      {/* 4. Informations sur SHALOM */}
+      {subTab === 'about' && (
+        <div className="max-w-2xl space-y-5">
+          <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 space-y-5 shadow-xs">
+            <div className="flex items-center gap-3">
+              <img
+                src="./shalom_logo.jpg"
+                alt="SHALOM"
+                className="w-14 h-14 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 shadow-xs"
+              />
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                  Informations sur SHALOM
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Compagnon spirituel personnel · Stockage local sécurisé
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800">
+                <span className="text-[11px] text-slate-500 block">Version installée</span>
+                <strong className="text-sm font-extrabold text-slate-900 dark:text-white mt-0.5 block">
+                  v{__SHALOM_APP_VERSION__}
+                </strong>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800">
+                <span className="text-[11px] text-slate-500 block">Date de dernière mise à jour</span>
+                <strong className="text-sm font-extrabold text-slate-900 dark:text-white mt-0.5 block">
+                  {__SHALOM_BUILD_DATE__}
+                </strong>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800">
+                <span className="text-[11px] text-slate-500 block">État de connexion</span>
+                <div className="flex items-center gap-1.5 mt-0.5 font-bold">
+                  {isOnline ? (
+                    <>
+                      <Wifi className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-emerald-700 dark:text-emerald-300">En ligne (connecté)</span>
+                    </>
+                  ) : (
+                    <>
+                      <WifiOff className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                      <span className="text-amber-700 dark:text-amber-300">Hors ligne</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800">
+                <span className="text-[11px] text-slate-500 block">État du stockage</span>
+                <strong className="text-xs font-bold text-slate-900 dark:text-white mt-0.5 block tabular-nums">
+                  {storageStats.usageMB} Mo utilisés /{' '}
+                  {storageStats.quotaMB >= 1024
+                    ? `${(storageStats.quotaMB / 1024).toFixed(1)} Go`
+                    : `${storageStats.quotaMB} Mo`}{' '}
+                  ({storageStats.persisted ? 'Persistant' : 'Standard'})
+                </strong>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                    Disponibilité d’une nouvelle version
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    Vérifier si une mise à jour de SHALOM est disponible en ligne
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCheckForUpdates}
+                  disabled={updateCheckStatus === 'checking'}
+                  className="px-3.5 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white text-xs font-bold flex items-center gap-1.5"
+                >
+                  <RefreshCw
+                    className={`w-3.5 h-3.5 ${updateCheckStatus === 'checking' ? 'animate-spin' : ''}`}
+                  />
+                  <span>Vérifier les mises à jour</span>
+                </button>
+              </div>
+
+              {updateCheckMessage && (
+                <div
+                  className={`p-3 rounded-lg text-xs font-semibold flex flex-wrap items-center justify-between gap-2 ${
+                    updateCheckStatus === 'available'
+                      ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                      : updateCheckStatus === 'up-to-date'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  <span>{updateCheckMessage}</span>
+                  {updateCheckStatus === 'available' && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if ('serviceWorker' in navigator) {
+                          const reg = await navigator.serviceWorker.getRegistration();
+                          if (reg?.waiting) {
+                            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                          }
+                        }
+                        window.location.reload();
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold"
+                    >
+                      Actualiser l’application
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowTermsModal(true)}
+                className="p-3.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-left flex items-center gap-3 transition"
+              >
+                <FileText className="w-4 h-4 text-blue-700 dark:text-blue-400 shrink-0" />
+                <div>
+                  <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                    Conditions d’utilisation
+                  </span>
+                  <span className="text-[11px] text-slate-500">Consulter les conditions</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowPrivacyModal(true)}
+                className="p-3.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-left flex items-center gap-3 transition"
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <div>
+                  <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                    Politique de confidentialité
+                  </span>
+                  <span className="text-[11px] text-slate-500">Protection de vos données</span>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modale Conditions d'utilisation */}
+      <Modal
+        isOpen={showTermsModal}
+        onClose={() => setShowTermsModal(false)}
+        title="Conditions d’utilisation de SHALOM"
+        subtitle={`Version v${__SHALOM_APP_VERSION__} · Dernière mise à jour : ${__SHALOM_BUILD_DATE__}`}
+        maxWidth="2xl"
+      >
+        <div className="space-y-4 text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+          <div>
+            <h4 className="font-bold text-slate-900 dark:text-white mb-1">1. Objet de l’application</h4>
+            <p>
+              SHALOM est un espace spirituel personnel destiné à accompagner la prière, la méditation, l’organisation chrétienne, la création visuelle/audio/vidéo et la conservation personnelle de ressources bibliques.
+            </p>
+          </div>
+          <div>
+            <h4 className="font-bold text-slate-900 dark:text-white mb-1">2. Usage personnel et responsabilité</h4>
+            <p>
+              Vous demeurez entièrement propriétaire et responsable des contenus que vous rédigez, enregistrez, importez ou partagez depuis votre appareil (notes, témoignages, audios, vidéos, contacts et livres).
+            </p>
+          </div>
+          <div>
+            <h4 className="font-bold text-slate-900 dark:text-white mb-1">3. Services externes et liens tiers</h4>
+            <p>
+              Lorsque vous ouvrez Google Play Store, Google Livres, Open Library, Wikisource ou des plateformes sociales pour partager un contenu, vous êtes soumis aux conditions propres à chacun de ces services tiers.
+            </p>
+          </div>
+          <div>
+            <h4 className="font-bold text-slate-900 dark:text-white mb-1">4. Sauvegarde de vos données</h4>
+            <p>
+              Vos données étant stockées localement sur votre appareil, nous vous recommandons d’utiliser régulièrement la fonction « Exporter / Restaurer (JSON) » dans Sauvegarde afin de conserver une copie de sécurité en cas de changement d’appareil.
+            </p>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modale Politique de confidentialité */}
+      <Modal
+        isOpen={showPrivacyModal}
+        onClose={() => setShowPrivacyModal(false)}
+        title="Politique de confidentialité de SHALOM"
+        subtitle="Approche 100 % locale et confidentielle"
+        maxWidth="2xl"
+      >
+        <div className="space-y-4 text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+          <div>
+            <h4 className="font-bold text-slate-900 dark:text-white mb-1">1. Stockage strictement local</h4>
+            <p>
+              SHALOM fonctionne sans compte cloud imposé : vos prières, autels, journaux, contacts, enregistrements et fichiers du Coffre Spirituel sont enregistrés exclusivement sur votre appareil (IndexedDB et stockage local du navigateur).
+            </p>
+          </div>
+          <div>
+            <h4 className="font-bold text-slate-900 dark:text-white mb-1">2. Aucune collecte ni revente</h4>
+            <p>
+              SHALOM ne collecte, ne vend et ne transmet aucune de vos données spirituelles ou personnelles à des serveurs publicitaires ou tiers.
+            </p>
+          </div>
+          <div>
+            <h4 className="font-bold text-slate-900 dark:text-white mb-1">3. Sécurité locale</h4>
+            <p>
+              Votre code PIN, mot de passe ou schéma est transformé localement par hachage SHA-256 avant enregistrement sur votre appareil. Vous pouvez aussi activer le verrouillage automatique après inactivité depuis l’onglet Sécurité.
+            </p>
+          </div>
+          <div>
+            <h4 className="font-bold text-slate-900 dark:text-white mb-1">4. Recherches en ligne volontaires</h4>
+            <p>
+              Seules les recherches volontaires de livres en ligne (Open Library, Wikisource) ou l’ouverture manuelle de Play Store effectuent une requête réseau directe pour récupérer les résultats demandés.
+            </p>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

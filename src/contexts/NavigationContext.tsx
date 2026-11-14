@@ -102,6 +102,11 @@ function loadInitialRoutes(): PersistedRoute[] {
         const tab = (item as PersistedRoute).tab;
         const subView = resolveSubView(tab, (item as PersistedRoute).subView);
         const key = buildRouteKey(tab, subView);
+        if (tab === 'dashboard') {
+          cleaned.length = 0;
+          cleaned.push({ tab: 'dashboard' });
+          continue;
+        }
         const prev = cleaned[cleaned.length - 1];
         if (!prev || buildRouteKey(prev.tab, prev.subView) !== key) {
           cleaned.push({ tab, subView });
@@ -136,15 +141,12 @@ interface NavigationContextValue {
   canGoBack: boolean;
   hasActiveOverlay: boolean;
   historyDepth: number;
-  isExitConfirmOpen: boolean;
   navigateTo: (tab: string, subView?: string) => void;
   navigateSubView: (tab: string, subView: string) => void;
   goBack: () => void;
   goHome: () => void;
   registerOverlay: (overlayId: string, close: () => void, label?: string) => void;
   unregisterOverlay: (overlayId: string) => void;
-  cancelExit: () => void;
-  confirmExit: () => void;
 }
 
 const NavigationContext = createContext<NavigationContextValue | null>(null);
@@ -160,13 +162,8 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
 }) => {
   const seqRef = useRef<number>(1);
   const expectedSeqRef = useRef<number>(1);
-  const allowExitRef = useRef<boolean>(false);
   const isLaunchLockedRef = useRef<boolean>(isLaunchLocked);
   isLaunchLockedRef.current = isLaunchLocked;
-
-  const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
-  const isExitConfirmOpenRef = useRef(false);
-  isExitConfirmOpenRef.current = isExitConfirmOpen;
 
   const [stack, setStack] = useState<NavStackItem[]>(() => {
     const initialRoutes = loadInitialRoutes();
@@ -200,7 +197,9 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   // Initialize browser history sentinel + active entry once on initial mount
   useEffect(() => {
     const curState = (window.history.state || null) as HistoryStateShape | null;
-    const topRoute = stackRef.current.find((x): x is RouteEntry => x.kind === 'route');
+    const topRoute = [...stackRef.current]
+      .reverse()
+      .find((x): x is RouteEntry => x.kind === 'route');
     const topKey = topRoute?.key || 'dashboard';
 
     if (!curState?.shalomManaged) {
@@ -224,7 +223,6 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
         // ignore restricted history API errors
       }
     } else if (curState.shalomSentinel) {
-      // Refresh landed on sentinel: re-establish active route entry above sentinel
       const nextSeq = Math.max(1, seqRef.current + 1);
       seqRef.current = nextSeq;
       expectedSeqRef.current = nextSeq;
@@ -248,22 +246,61 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
         // ignore
       }
     } else {
-      // Page refresh inside an existing managed session: align seqRef without pushing duplicates
-      const restoredSeq = typeof curState.shalomSeq === 'number' && curState.shalomSeq > 0 ? curState.shalomSeq : 1;
+      const restoredSeq =
+        typeof curState.shalomSeq === 'number' && curState.shalomSeq > 0
+          ? curState.shalomSeq
+          : 1;
       seqRef.current = Math.max(seqRef.current, restoredSeq);
       expectedSeqRef.current = restoredSeq;
     }
   }, [updateStack]);
 
+  const goHome = useCallback(() => {
+    const current = stackRef.current;
+    const isAlreadyCleanHome =
+      current.length === 1 &&
+      current[0].kind === 'route' &&
+      current[0].tab === 'dashboard';
+
+    if (isAlreadyCleanHome) return;
+
+    const overlaysToClose = current.filter((item): item is OverlayEntry => item.kind === 'overlay');
+    const nextSeq = ++seqRef.current;
+    expectedSeqRef.current = nextSeq;
+    const rootEntry = createRouteEntry('dashboard', undefined, nextSeq, true);
+
+    updateStack([rootEntry]);
+    overlaysToClose.forEach((ov) => ov.close());
+
+    try {
+      window.history.replaceState(
+        {
+          shalomManaged: true,
+          shalomSentinel: false,
+          shalomSeq: nextSeq,
+          key: rootEntry.key,
+        } satisfies HistoryStateShape,
+        ''
+      );
+    } catch {
+      // ignore
+    }
+  }, [updateStack]);
+
   const navigateTo = useCallback(
     (tab: string, subView?: string) => {
-      setIsExitConfirmOpen(false);
+      // Returning to Accueil clears prior history so Back on Accueil never jumps back to a previous page
+      if (tab === 'dashboard') {
+        goHome();
+        return;
+      }
+
       const effectiveSubView = resolveSubView(tab, subView);
       const nextKey = buildRouteKey(tab, effectiveSubView);
 
       const current = stackRef.current;
 
-      // Strip any trailing overlays (e.g., navigation drawer, feature unlock modal, share modal)
+      // Strip any trailing overlays
       let firstOverlayIdx = current.length;
       while (firstOverlayIdx > 0 && current[firstOverlayIdx - 1].kind === 'overlay') {
         firstOverlayIdx -= 1;
@@ -280,7 +317,6 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
 
       if (currentTopRoute && currentTopRoute.key === nextKey) {
         if (hasTrailingOverlays) {
-          // Only close trailing overlays and keep current route without pushing a duplicate
           const overlays = current.slice(firstOverlayIdx);
           updateStack(baseRoutes);
           overlays.forEach((ov) => {
@@ -338,7 +374,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
         // ignore
       }
     },
-    [updateStack]
+    [goHome, updateStack]
   );
 
   const navigateSubView = useCallback(
@@ -347,41 +383,6 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
     },
     [navigateTo]
   );
-
-  const goHome = useCallback(() => {
-    setIsExitConfirmOpen(false);
-    const current = stackRef.current;
-    const hasOverlays = current.some((item) => item.kind === 'overlay');
-    const isAlreadyCleanHome =
-      current.length === 1 &&
-      current[0].kind === 'route' &&
-      current[0].tab === 'dashboard';
-
-    if (isAlreadyCleanHome) return;
-
-    const overlaysToClose = current.filter((item): item is OverlayEntry => item.kind === 'overlay');
-    const nextSeq = ++seqRef.current;
-    expectedSeqRef.current = nextSeq;
-    const rootEntry = createRouteEntry('dashboard', undefined, nextSeq, true);
-
-    updateStack([rootEntry]);
-
-    overlaysToClose.forEach((ov) => ov.close());
-
-    try {
-      window.history.replaceState(
-        {
-          shalomManaged: true,
-          shalomSentinel: false,
-          shalomSeq: nextSeq,
-          key: rootEntry.key,
-        } satisfies HistoryStateShape,
-        ''
-      );
-    } catch {
-      // ignore
-    }
-  }, [updateStack]);
 
   const registerOverlay = useCallback(
     (overlayId: string, close: () => void, label?: string) => {
@@ -484,28 +485,11 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
     if (isLaunchLockedRef.current) return;
 
     const current = stackRef.current;
+    // When on Accueil with no open overlay, Back button performs NO action
     if (current.length <= 1) {
       const only = current[0];
       if (only && only.kind === 'route' && only.tab !== 'dashboard') {
-        const nextSeq = ++seqRef.current;
-        expectedSeqRef.current = nextSeq;
-        const rootEntry = createRouteEntry('dashboard', undefined, nextSeq, true);
-        updateStack([rootEntry]);
-        try {
-          window.history.replaceState(
-            {
-              shalomManaged: true,
-              shalomSentinel: false,
-              shalomSeq: nextSeq,
-              key: rootEntry.key,
-            } satisfies HistoryStateShape,
-            ''
-          );
-        } catch {
-          // ignore
-        }
-      } else {
-        setIsExitConfirmOpen(true);
+        goHome();
       }
       return;
     }
@@ -587,69 +571,12 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
         // ignore
       }
     }
-  }, [updateStack]);
-
-  const cancelExit = useCallback(() => {
-    setIsExitConfirmOpen(false);
-    const curState = (window.history.state || null) as HistoryStateShape | null;
-    if (curState?.shalomSentinel) {
-      const nextSeq = ++seqRef.current;
-      expectedSeqRef.current = nextSeq;
-      const current = stackRef.current;
-      const top = current[current.length - 1];
-      if (top) {
-        updateStack(
-          current.map((item, i) =>
-            i === current.length - 1
-              ? { ...item, seq: nextSeq, hasBrowserHistory: true }
-              : item
-          )
-        );
-      }
-      try {
-        window.history.pushState(
-          {
-            shalomManaged: true,
-            shalomSentinel: false,
-            shalomSeq: nextSeq,
-            key: top?.kind === 'route' ? top.key : 'dashboard',
-          } satisfies HistoryStateShape,
-          ''
-        );
-      } catch {
-        // ignore
-      }
-    }
-  }, [updateStack]);
-
-  const confirmExit = useCallback(() => {
-    allowExitRef.current = true;
-    setIsExitConfirmOpen(false);
-    try {
-      window.close();
-    } catch {
-      // ignore
-    }
-    try {
-      const curState = (window.history.state || null) as HistoryStateShape | null;
-      if (curState?.shalomSentinel) {
-        window.history.back();
-      } else {
-        window.history.go(-2);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
+  }, [goHome, updateStack]);
 
   // Synchronize Android hardware / browser Back button (`popstate`) with centralized stack
   useEffect(() => {
     const onPopState = (e: PopStateEvent) => {
       const state = (e.state || null) as HistoryStateShape | null;
-
-      if (allowExitRef.current) {
-        return;
-      }
 
       if (
         state?.shalomManaged &&
@@ -670,11 +597,6 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
         } catch {
           // ignore
         }
-        return;
-      }
-
-      if (isExitConfirmOpenRef.current) {
-        cancelExit();
         return;
       }
 
@@ -719,44 +641,41 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
         return;
       }
 
-      // No previous screen left in stack
+      // On Accueil (root stack): Back button performs NO action — silently keep active dashboard entry above sentinel
       const only = current[0];
+      const nextSeq = ++seqRef.current;
+      expectedSeqRef.current = nextSeq;
       if (only && only.kind === 'route' && only.tab !== 'dashboard') {
-        const nextSeq = ++seqRef.current;
-        expectedSeqRef.current = nextSeq;
         const rootEntry = createRouteEntry('dashboard', undefined, nextSeq, true);
         updateStack([rootEntry]);
-        try {
-          window.history.pushState(
-            {
-              shalomManaged: true,
-              shalomSentinel: false,
-              shalomSeq: nextSeq,
-              key: rootEntry.key,
-            } satisfies HistoryStateShape,
-            ''
-          );
-        } catch {
-          // ignore
-        }
-        return;
+      } else if (only) {
+        updateStack([{ ...only, seq: nextSeq, hasBrowserHistory: true }]);
       }
-
-      // At Accueil with no previous screen: ask confirmation before quitting
-      setIsExitConfirmOpen(true);
+      try {
+        window.history.pushState(
+          {
+            shalomManaged: true,
+            shalomSentinel: false,
+            shalomSeq: nextSeq,
+            key: 'dashboard',
+          } satisfies HistoryStateShape,
+          ''
+        );
+      } catch {
+        // ignore
+      }
     };
 
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [cancelExit, updateStack]);
+  }, [updateStack]);
 
-  // Expose active route (top-most route entry beneath any open overlays)
   const currentRoute =
     [...stack].reverse().find((item): item is RouteEntry => item.kind === 'route') ||
     createRouteEntry('dashboard', undefined, 1, true);
 
   const hasActiveOverlay = stack.some((item) => item.kind === 'overlay');
-  const canGoBack = stack.length > 1 || currentRoute.tab !== 'dashboard';
+  const canGoBack = currentRoute.tab !== 'dashboard' || hasActiveOverlay;
 
   return (
     <NavigationContext.Provider
@@ -766,15 +685,12 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
         canGoBack,
         hasActiveOverlay,
         historyDepth: stack.length,
-        isExitConfirmOpen,
         navigateTo,
         navigateSubView,
         goBack,
         goHome,
         registerOverlay,
         unregisterOverlay,
-        cancelExit,
-        confirmExit,
       }}
     >
       {children}

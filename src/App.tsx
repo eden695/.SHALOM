@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Bell, X } from 'lucide-react';
 import { useShalomDB } from './hooks/useShalomDB';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { RecordingProvider } from './contexts/RecordingContext';
@@ -27,6 +28,7 @@ import {
   unlockFeatureSession,
   lockAllSessions,
 } from './services/security';
+import { checkDueReminders, DueReminderPayload } from './services/notifications';
 import { Contact, SecurityConfig, LockableFeatureId } from './types';
 
 const LOCKABLE_IDS: LockableFeatureId[] = [
@@ -61,16 +63,8 @@ function ShalomAppShell({
 }: ShellProps) {
   const { userProfile, loading } = useShalomDB();
   const { t, lang } = useLanguage();
-  const {
-    activeTab,
-    canGoBack,
-    navigateTo,
-    goBack,
-    goHome,
-    isExitConfirmOpen,
-    cancelExit,
-    confirmExit,
-  } = useNavigation();
+  const isEn = lang === 'en';
+  const { activeTab, canGoBack, navigateTo, goBack, goHome } = useNavigation();
 
   const [pendingFeatureUnlock, setPendingFeatureUnlock] = useState<{
     tab: string;
@@ -78,12 +72,71 @@ function ShalomAppShell({
     lockId: LockableFeatureId;
   } | null>(null);
 
-  const handleLockNow = () => {
+  const [activeReminderBanner, setActiveReminderBanner] = useState<DueReminderPayload | null>(null);
+  const lastActivityRef = useRef<number>(Date.now());
+
+  const handleLockNow = useCallback(() => {
     lockAllSessions();
     if (securityConfig.isEnabled && securityConfig.secretHash) {
       setIsLaunchLockOpen(true);
     }
-  };
+  }, [securityConfig.isEnabled, securityConfig.secretHash, setIsLaunchLockOpen]);
+
+  // Automatic inactivity lock monitor
+  useEffect(() => {
+    const minutes = securityConfig.autoLockMinutes || 0;
+    if (!securityConfig.isEnabled || !securityConfig.secretHash || minutes <= 0) {
+      return;
+    }
+
+    lastActivityRef.current = Date.now();
+    const touchActivity = () => {
+      lastActivityRef.current = Date.now();
+    };
+
+    const thresholdMs = minutes * 60_000;
+    const checkInactivity = () => {
+      if (!isLaunchLockOpen && Date.now() - lastActivityRef.current >= thresholdMs) {
+        handleLockNow();
+      }
+    };
+
+    window.addEventListener('pointerdown', touchActivity, { passive: true });
+    window.addEventListener('keydown', touchActivity, { passive: true });
+    window.addEventListener('touchstart', touchActivity, { passive: true });
+    window.addEventListener('scroll', touchActivity, { passive: true });
+    document.addEventListener('visibilitychange', checkInactivity);
+
+    const intervalId = window.setInterval(checkInactivity, 15000);
+
+    return () => {
+      window.removeEventListener('pointerdown', touchActivity);
+      window.removeEventListener('keydown', touchActivity);
+      window.removeEventListener('touchstart', touchActivity);
+      window.removeEventListener('scroll', touchActivity);
+      document.removeEventListener('visibilitychange', checkInactivity);
+      window.clearInterval(intervalId);
+    };
+  }, [
+    securityConfig.isEnabled,
+    securityConfig.secretHash,
+    securityConfig.autoLockMinutes,
+    isLaunchLockOpen,
+    handleLockNow,
+  ]);
+
+  // Scheduled local prayer/meditation/bible reminders
+  useEffect(() => {
+    const runCheck = () => {
+      const due = checkDueReminders(isEn);
+      if (due) {
+        setActiveReminderBanner(due);
+      }
+    };
+    runCheck();
+    const timer = window.setInterval(runCheck, 25000);
+    return () => window.clearInterval(timer);
+  }, [isEn]);
 
   const handleSelectTab = (tab: string, subView?: string) => {
     const isFeatureProtected =
@@ -105,7 +158,6 @@ function ShalomAppShell({
     navigateTo(tab, subView);
   };
 
-  // Guard if a protected tab was restored from sessionStorage without active feature unlock
   useEffect(() => {
     if (
       securityConfig.isEnabled &&
@@ -153,8 +205,6 @@ function ShalomAppShell({
     ? t(activeNavItem.labelKey, activeNavItem.fallbackLabel)
     : 'SHALOM';
 
-  const isEn = lang === 'en';
-
   return (
     <div className="min-h-screen flex bg-[#f7f8fa] dark:bg-[#060d1d] text-slate-900 dark:text-slate-100 transition-colors">
       <Sidebar
@@ -177,6 +227,28 @@ function ShalomAppShell({
           onGoBack={goBack}
           onGoHome={goHome}
         />
+
+        {activeReminderBanner && (
+          <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 pt-3">
+            <div className="p-3.5 rounded-2xl bg-blue-700 text-white shadow-md flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Bell className="w-4 h-4 text-amber-300 shrink-0" />
+                <div className="min-w-0 text-xs">
+                  <div className="font-bold truncate">{activeReminderBanner.title}</div>
+                  <div className="text-blue-100 truncate">{activeReminderBanner.body}</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveReminderBanner(null)}
+                className="p-1.5 rounded-lg hover:bg-white/15 shrink-0"
+                aria-label="Fermer le rappel"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
         <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 pb-24 lg:pb-10">
           {activeTab === 'dashboard' && (
@@ -283,43 +355,6 @@ function ShalomAppShell({
           }}
           onCancel={() => setPendingFeatureUnlock(null)}
         />
-      )}
-
-      {isExitConfirmOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
-            <div className="space-y-1.5">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                {isEn ? 'Exit SHALOM?' : 'Quitter SHALOM ?'}
-              </h3>
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                {isEn
-                  ? 'You are on the home screen. Do you want to leave the application?'
-                  : 'Vous êtes sur l’écran d’accueil. Voulez-vous vraiment quitter l’application ?'}
-              </p>
-            </div>
-            <div className="flex items-center justify-end gap-2.5 pt-1">
-              <button
-                type="button"
-                onClick={cancelExit}
-                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-              >
-                {isEn ? 'Stay' : 'Rester'}
-              </button>
-              <button
-                type="button"
-                onClick={confirmExit}
-                className="px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold transition"
-              >
-                {isEn ? 'Exit' : 'Quitter'}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

@@ -22,6 +22,18 @@ export interface SecurityConfig {
   secretHash: string;
   lockOnLaunch: boolean;
   lockedFeatures: LockableFeatureId[];
+  autoLockMinutes?: number;
+}
+
+export interface ReminderItemConfig {
+  enabled: boolean;
+  time: string;
+}
+
+export interface NotificationSettings {
+  dailyPrayer: ReminderItemConfig;
+  meditation: ReminderItemConfig;
+  bibleReading: ReminderItemConfig;
 }
 
 export type PrayerCategory =
@@ -209,6 +221,7 @@ export interface UserProfile {
   dashboardVerseRef?: string;
   theme: 'light' | 'dark';
   language?: AppLanguage;
+  showUsageTips?: boolean;
   createdAt: string;
 }
 
