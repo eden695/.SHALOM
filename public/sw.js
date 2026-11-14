@@ -1,5 +1,5 @@
 // Service Worker for SHALOM - Offline Christian Companion (Network-First, safe cache)
-const CACHE_NAME = 'shalom-cache-v9';
+const CACHE_NAME = 'shalom-cache-v10';
 const ASSETS_TO_CACHE = [
   './shalom_logo.jpg',
   './shalom_logo_512x512.png',

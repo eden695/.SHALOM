@@ -322,41 +322,45 @@ export const UnifiedCalendarModule: React.FC = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsModalOpen(true)}
-          className="px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center gap-1.5 self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Ajouter un moment</span>
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div className="p-3.5 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="text-xs px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800"
-        >
-          <option value="all">Tous les moments ({unifiedItems.length})</option>
-          {PERSONAL_ACTIVITY_TYPES.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-
-        {selectedDay && (
+        {unifiedItems.length > 0 && (
           <button
             type="button"
-            onClick={() => setSelectedDay(null)}
-            className="text-xs font-semibold text-blue-700 dark:text-blue-400 hover:underline"
+            onClick={() => setIsModalOpen(true)}
+            className="px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center gap-1.5 self-start sm:self-auto"
           >
-            Jour sélectionné : {selectedDay} · Tout afficher
+            <Plus className="w-4 h-4" />
+            <span>Ajouter un moment</span>
           </button>
         )}
       </div>
+
+      {/* Filters */}
+      {unifiedItems.length > 0 && (
+        <div className="p-3.5 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="text-xs px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800"
+          >
+            <option value="all">Tous les moments ({unifiedItems.length})</option>
+            {PERSONAL_ACTIVITY_TYPES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+
+          {selectedDay && (
+            <button
+              type="button"
+              onClick={() => setSelectedDay(null)}
+              className="text-xs font-semibold text-blue-700 dark:text-blue-400 hover:underline"
+            >
+              Jour sélectionné : {selectedDay} · Tout afficher
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Month Grid */}
@@ -565,11 +569,21 @@ export const UnifiedCalendarModule: React.FC = () => {
           })}
 
           {filteredItems.length === 0 && (
-            <div className="py-12 text-center rounded-2xl bg-white dark:bg-[#0c1631] border border-dashed border-slate-300 dark:border-slate-800">
-              <CalendarIcon className="w-9 h-9 text-slate-400 mx-auto mb-2" />
+            <div className="py-12 px-6 text-center rounded-2xl bg-white dark:bg-[#0c1631] border border-dashed border-slate-300 dark:border-slate-800 space-y-3">
+              <CalendarIcon className="w-9 h-9 text-blue-600 dark:text-blue-400 mx-auto" />
               <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                Aucun moment planifié pour cette sélection.
+                {unifiedItems.length === 0
+                  ? 'Votre calendrier spirituel est vide.'
+                  : 'Aucun moment planifié pour cette sélection.'}
               </p>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(true)}
+                className="px-5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-sm"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Planifier mon premier moment</span>
+              </button>
             </div>
           )}
         </div>

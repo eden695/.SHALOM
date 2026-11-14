@@ -16,6 +16,10 @@ import {
   ExternalLink,
   Loader2,
   AlertCircle,
+  CheckSquare,
+  Square,
+  Smartphone,
+  ShoppingBag,
 } from 'lucide-react';
 import { useShalomDB } from '../../hooks/useShalomDB';
 import { dbService, STORES } from '../../services/db';
@@ -182,21 +186,22 @@ function extractCleanTextFromWikisourceHtml(html: string): {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
 
-  // Collect sub-chapter links if this is a table-of-contents page
   const subPages: string[] = [];
   doc.querySelectorAll('a[href^="/wiki/"]').forEach((a) => {
     const href = a.getAttribute('href') || '';
     if (
       !href.includes(':') &&
       !href.includes('#') &&
-      (href.includes('/Chapitre') || href.includes('/Livre') || href.includes('/Chapter') || href.includes('/Part'))
+      (href.includes('/Chapitre') ||
+        href.includes('/Livre') ||
+        href.includes('/Chapter') ||
+        href.includes('/Part'))
     ) {
       const pageName = decodeURIComponent(href.replace(/^\/wiki\//, ''));
       if (!subPages.includes(pageName)) subPages.push(pageName);
     }
   });
 
-  // Remove Wikisource navigation headers/footers/edit links
   doc
     .querySelectorAll(
       '#headertemplate, .ws-noexport, .mw-editsection, .prp-page-qualityheader, .footertemplate, style, script'
@@ -244,7 +249,6 @@ async function fetchWikisourceBookText(
   onProgress?.('Connexion à Wikisource...');
   const root = await fetchPage(pageTitle);
 
-  // If the page is a short index pointing to chapter subpages, fetch up to 12 chapters
   const prefix = pageTitle.split('/')[0];
   const relevantSubs = root.subPages
     .filter((sp) => sp.startsWith(prefix) && sp !== pageTitle)
@@ -257,7 +261,9 @@ async function fetchWikisourceBookText(
       try {
         const sub = await fetchPage(relevantSubs[i]);
         if (sub.text.trim()) {
-          sections.push(`\n==============================\n${relevantSubs[i].replace(/_/g, ' ')}\n==============================\n\n${sub.text}`);
+          sections.push(
+            `\n==============================\n${relevantSubs[i].replace(/_/g, ' ')}\n==============================\n\n${sub.text}`
+          );
         }
       } catch {
         // continue with remaining chapters
@@ -277,6 +283,9 @@ export const SpiritualVaultModule: React.FC = () => {
   const [subTab, setSubTab] = useState<'vault' | 'library'>('vault');
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+
+  // Play Store Books search query
+  const [playStoreQuery, setPlayStoreQuery] = useState('');
 
   // Online book search (Wikisource)
   const [onlineSearchQuery, setOnlineSearchQuery] = useState('');
@@ -300,7 +309,9 @@ export const SpiritualVaultModule: React.FC = () => {
   const [viewingText, setViewingText] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<VaultDocument | null>(null);
+
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  const [confirmDeleteDocs, setConfirmDeleteDocs] = useState<VaultDocument[] | null>(null);
   const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
 
   useEffect(() => {
@@ -365,10 +376,11 @@ export const SpiritualVaultModule: React.FC = () => {
     }
 
     e.target.value = '';
+    setSubTab('vault');
     setNotice(
       isEn
-        ? `${added} document(s) added privately to your Spiritual Vault.`
-        : `${added} document(s) ajouté(s) en privé dans votre Coffre Spirituel.`
+        ? `${added} book/file(s) stored in your Spiritual Vault.`
+        : `${added} livre(s) / fichier(s) enregistré(s) dans votre Coffre Spirituel.`
     );
     reloadData();
   };
@@ -502,16 +514,16 @@ export const SpiritualVaultModule: React.FC = () => {
 
       setNotice(
         isEn
-          ? `« ${book.title} » downloaded inside SHALOM! Ready to read offline, save to phone, or share.`
-          : `« ${book.title} » téléchargé dans votre Coffre Spirituel ! Vous pouvez maintenant le lire hors-ligne, l’enregistrer sur votre téléphone ou le partager.`
+          ? `« ${book.title} » downloaded inside SHALOM! Ready to read offline, send to phone, or share.`
+          : `« ${book.title} » téléchargé dans votre Coffre Spirituel ! Vous pouvez maintenant le lire hors-ligne, l’envoyer sur votre téléphone ou le partager.`
       );
       reloadData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erreur réseau';
       setErrorBanner(
         isEn
-          ? `Could not download book inside app (${msg}). You can still open or download the EPUB link directly.`
-          : `Impossible de télécharger le texte dans l’application (${msg}). Vérifiez votre connexion ou utilisez le lien EPUB / Source en ligne.`
+          ? `Could not download book inside app (${msg}). Use the EPUB link directly.`
+          : `Impossible de télécharger le texte dans l’application (${msg}). Utilisez le lien EPUB ci-dessous.`
       );
     } finally {
       setDownloadingBookId(null);
@@ -519,50 +531,46 @@ export const SpiritualVaultModule: React.FC = () => {
     }
   };
 
-  const handleSaveBookToPhone = async (docOrBook: VaultDocument | OnlineBookEntry) => {
-    // If it's a VaultDocument with downloaded content or blob, save immediately to phone
-    if ('id' in docOrBook) {
-      if (docOrBook.blobKey) {
-        const blob = await dbService.getMediaBlob(docOrBook.blobKey);
-        if (blob) {
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = docOrBook.fileName;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-          setNotice(
-            isEn
-              ? `Saved « ${docOrBook.title} » to your device.`
-              : `« ${docOrBook.title} » enregistré sur votre téléphone.`
-          );
-          return;
-        }
-      }
-      if (docOrBook.textContent) {
-        const blob = new Blob([docOrBook.textContent], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = docOrBook.fileName.endsWith('.txt')
-          ? docOrBook.fileName
-          : `${docOrBook.fileName}.txt`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+  const triggerBlobDownload = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const handleSaveDocToPhone = async (doc: VaultDocument) => {
+    if (doc.blobKey) {
+      const blob = await dbService.getMediaBlob(doc.blobKey);
+      if (blob) {
+        triggerBlobDownload(blob, doc.fileName);
+        setNotice(
+          isEn
+            ? `Sent « ${doc.title} » to your phone Downloads.`
+            : `« ${doc.title} » envoyé sur votre téléphone (Téléchargements).`
+        );
         return;
       }
-    } else {
-      // OnlineBookEntry: download real EPUB directly from Wikisource export link to device
-      window.open(docOrBook.epubUrl, '_blank', 'noopener,noreferrer');
+    }
+    if (doc.textContent) {
+      const blob = new Blob([doc.textContent], { type: 'text/plain;charset=utf-8' });
+      const fileName = doc.fileName.endsWith('.txt') ? doc.fileName : `${doc.fileName}.txt`;
+      triggerBlobDownload(blob, fileName);
       setNotice(
         isEn
-          ? `Downloading EPUB file of « ${docOrBook.title} » to your device...`
-          : `Téléchargement du fichier EPUB de « ${docOrBook.title} » lancé sur votre téléphone...`
+          ? `Sent « ${doc.title} » to your phone.`
+          : `« ${doc.title} » envoyé sur votre téléphone.`
       );
+    }
+  };
+
+  const handleBulkSaveToPhone = async () => {
+    const targets = vaultDocuments.filter((d) => selectedDocIds.includes(d.id));
+    for (const doc of targets) {
+      await handleSaveDocToPhone(doc);
     }
   };
 
@@ -604,12 +612,17 @@ export const SpiritualVaultModule: React.FC = () => {
   };
 
   const handleConfirmDelete = async () => {
-    if (!confirmDelete) return;
-    if (confirmDelete.blobKey) {
-      await dbService.deleteItem(STORES.MEDIA_BLOBS, confirmDelete.blobKey);
+    if (!confirmDeleteDocs || confirmDeleteDocs.length === 0) return;
+    const blobKeys = confirmDeleteDocs
+      .map((d) => d.blobKey)
+      .filter((k): k is string => !!k);
+    const ids = confirmDeleteDocs.map((d) => d.id);
+    if (blobKeys.length > 0) {
+      await dbService.deleteItems(STORES.MEDIA_BLOBS, blobKeys);
     }
-    await dbService.deleteItem(STORES.VAULT_DOCUMENTS, confirmDelete.id);
-    setConfirmDelete(null);
+    await dbService.deleteItems(STORES.VAULT_DOCUMENTS, ids);
+    setSelectedDocIds((prev) => prev.filter((id) => !ids.includes(id)));
+    setConfirmDeleteDocs(null);
     reloadData();
   };
 
@@ -625,6 +638,18 @@ export const SpiritualVaultModule: React.FC = () => {
     });
   }, [vaultDocuments, categoryFilter, searchQuery]);
 
+  const toggleSelectDoc = (id: string) => {
+    setSelectedDocIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleAllDocs = () => {
+    const visibleIds = filteredVaultDocs.map((d) => d.id);
+    const allSel = visibleIds.length > 0 && visibleIds.every((id) => selectedDocIds.includes(id));
+    setSelectedDocIds(allSel ? [] : visibleIds);
+  };
+
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} o`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
@@ -633,6 +658,10 @@ export const SpiritualVaultModule: React.FC = () => {
 
   const displayedOnlineBooks =
     onlineResults.length > 0 ? onlineResults : ONLINE_BOOKS_CATALOG;
+
+  const playStoreHref = playStoreQuery.trim()
+    ? `https://play.google.com/store/search?q=${encodeURIComponent(playStoreQuery.trim())}&c=books`
+    : 'https://play.google.com/store/books';
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -647,8 +676,8 @@ export const SpiritualVaultModule: React.FC = () => {
             <Lock className="w-3 h-3" />
             <span>
               {isEn
-                ? 'Private documents & real online Christian books downloadable into app or phone'
-                : 'Documents privés et véritables livres chrétiens en ligne téléchargeables dans l’app ou sur votre téléphone'}
+                ? 'Private books & documents stored in vault, sendable to phone or shareable'
+                : 'Livres et documents stockés en sécurité, envoyables sur votre téléphone ou partageables'}
             </span>
           </p>
         </div>
@@ -675,7 +704,7 @@ export const SpiritualVaultModule: React.FC = () => {
             }`}
           >
             <Globe className="w-3.5 h-3.5" />
-            <span>{isEn ? 'Online Books Library' : 'Livres en ligne (Wikisource)'}</span>
+            <span>{isEn ? 'Books Online & Play Store' : 'Livres en ligne'}</span>
           </button>
         </div>
       </div>
@@ -707,166 +736,306 @@ export const SpiritualVaultModule: React.FC = () => {
       {/* TAB 1: MON COFFRE PERSONNEL */}
       {subTab === 'vault' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row gap-3 justify-between">
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={isEn ? 'Search my vault...' : 'Rechercher dans mon coffre...'}
-                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800"
-              />
+          {vaultDocuments.length === 0 ? (
+            <div className="py-12 px-6 text-center rounded-3xl bg-white dark:bg-[#0c1631] border border-dashed border-slate-300 dark:border-slate-800 space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 flex items-center justify-center mx-auto">
+                <Vault className="w-6 h-6" />
+              </div>
+              <div className="space-y-1 max-w-md mx-auto">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  {isEn ? 'Your Spiritual Vault is Empty' : 'Votre Coffre Spirituel est vide'}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {isEn
+                    ? 'Find books online or on Google Play Store and store them securely here, then send to your phone anytime.'
+                    : 'Téléchargez un livre sur Play Store ou en ligne pour le stocker ici et l’envoyer sur votre téléphone à tout moment.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubTab('library')}
+                className="px-5 py-3 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs sm:text-sm font-bold inline-flex items-center gap-2 shadow-sm"
+              >
+                <BookOpen className="w-4 h-4" />
+                <span>
+                  {isEn ? 'Find & Download Books Online' : 'Trouver des livres en ligne'}
+                </span>
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col sm:flex-row gap-3 justify-between">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={isEn ? 'Search my vault...' : 'Rechercher dans mon coffre...'}
+                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800"
+                  />
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <label className="px-3.5 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition">
+                    <Upload className="w-4 h-4" />
+                    <span>{isEn ? 'Import File' : 'Importer un livre / fichier'}</span>
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.txt,.md,.doc,.docx,.epub,image/*,audio/*,video/*"
+                      onChange={handleImportFiles}
+                      className="hidden"
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsNoteModalOpen(true)}
+                    className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-xs font-bold flex items-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>{isEn ? 'New Note' : 'Écrire'}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { id: 'all', label: isEn ? 'All' : 'Tous' },
+                  { id: 'livre', label: isEn ? 'Books' : 'Livres' },
+                  { id: 'etude', label: isEn ? 'Bible Studies' : 'Études' },
+                  { id: 'note', label: isEn ? 'Personal Notes' : 'Notes' },
+                  { id: 'certificat', label: isEn ? 'Certificates' : 'Certificats' },
+                  { id: 'autre', label: isEn ? 'Other' : 'Autres' },
+                ].map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setCategoryFilter(cat.id)}
+                    className={`px-3 py-1 rounded-lg text-[11px] font-semibold transition ${
+                      categoryFilter === cat.id
+                        ? 'bg-[#0b1f42] text-white dark:bg-blue-700'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Multi-selection bar */}
+              {filteredVaultDocs.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                  <button
+                    type="button"
+                    onClick={toggleAllDocs}
+                    className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5 hover:text-blue-700"
+                  >
+                    {filteredVaultDocs.every((d) => selectedDocIds.includes(d.id)) ? (
+                      <CheckSquare className="w-4 h-4 text-blue-600" />
+                    ) : (
+                      <Square className="w-4 h-4 text-slate-400" />
+                    )}
+                    <span>Tout sélectionner ({selectedDocIds.length})</span>
+                  </button>
+
+                  {selectedDocIds.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleBulkSaveToPhone}
+                        className="px-3 py-1.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center gap-1.5"
+                      >
+                        <Smartphone className="w-3.5 h-3.5" />
+                        <span>Envoyer sur téléphone ({selectedDocIds.length})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConfirmDeleteDocs(
+                            vaultDocuments.filter((d) => selectedDocIds.includes(d.id))
+                          )
+                        }
+                        className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1.5"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Supprimer ({selectedDocIds.length})</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredVaultDocs.map((doc) => {
+                  const isSel = selectedDocIds.includes(doc.id);
+                  return (
+                    <div
+                      key={doc.id}
+                      className={`p-4 rounded-2xl bg-white dark:bg-[#0c1631] border space-y-2.5 flex flex-col justify-between transition ${
+                        isSel
+                          ? 'border-blue-600 ring-2 ring-blue-600/20'
+                          : 'border-slate-200/80 dark:border-slate-800/80'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px] text-slate-500">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleSelectDoc(doc.id)}
+                              aria-label="Sélectionner ce document"
+                              className="text-slate-400 hover:text-blue-600"
+                            >
+                              {isSel ? (
+                                <CheckSquare className="w-4 h-4 text-blue-600" />
+                              ) : (
+                                <Square className="w-4 h-4" />
+                              )}
+                            </button>
+                            <span className="font-bold text-blue-700 dark:text-blue-400 uppercase">
+                              {doc.category}
+                              {doc.sourceUrl ? (isEn ? ' · Online Book' : ' · Livre téléchargé') : ''}
+                            </span>
+                          </div>
+                          <span className="tabular-nums">{formatSize(doc.sizeBytes)}</span>
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                          <FileText className="w-4 h-4 text-amber-500 shrink-0" />
+                          <span className="truncate">{doc.title}</span>
+                        </h4>
+                        {doc.author && (
+                          <p className="text-xs text-slate-500 dark:text-slate-400">{doc.author}</p>
+                        )}
+                        {doc.description && (
+                          <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
+                            {doc.description}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                        <span className="text-[11px] text-slate-400 tabular-nums">
+                          {doc.createdAt.split('T')[0]}
+                        </span>
+
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setViewingDoc(doc)}
+                            className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-semibold flex items-center gap-1"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>{isEn ? 'Read' : 'Lire'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveDocToPhone(doc)}
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold flex items-center gap-1"
+                            title={isEn ? 'Send to phone' : 'Envoyer sur mon téléphone'}
+                          >
+                            <Smartphone className="w-3.5 h-3.5" />
+                            <span>{isEn ? 'To Phone' : 'Téléphone'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleShareVaultDoc(doc)}
+                            className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1"
+                            title={isEn ? 'Share' : 'Partager'}
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteDocs([doc])}
+                            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* TAB 2: LIVRES EN LIGNE (GOOGLE PLAY STORE + WIKISOURCE RÉEL) */}
+      {subTab === 'library' && (
+        <div className="space-y-5">
+          {/* Google Play Store Books Direct Card */}
+          <div className="p-5 rounded-3xl bg-gradient-to-br from-[#0b1f42] via-[#132d5e] to-[#1a3c7c] text-white border border-blue-900/60 shadow-lg space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-xs font-bold text-amber-300 uppercase tracking-wider">
+                  <ShoppingBag className="w-4 h-4" />
+                  <span>Google Play Store Livres</span>
+                </div>
+                <h3 className="text-base sm:text-lg font-extrabold font-display">
+                  {isEn
+                    ? 'Open Play Store Books & Store Downloaded Books in Vault'
+                    : 'Ouvrir Play Store Livres & importer vos livres téléchargés'}
+                </h3>
+                <p className="text-xs text-blue-100 leading-relaxed max-w-2xl">
+                  {isEn
+                    ? 'Browse Google Play Books, download your book, then import it directly into your SHALOM Vault — or send any Vault book back to your phone.'
+                    : 'Accédez directement aux livres sur Google Play Store, téléchargez votre livre puis importez le fichier dans votre Coffre SHALOM pour le lire, l’envoyer sur votre téléphone ou le partager.'}
+                </p>
+              </div>
+
+              <a
+                href="https://play.google.com/store/books"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-2 shrink-0 self-start sm:self-auto transition"
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span>{isEn ? 'Open Play Store' : 'Ouvrir Play Store Livres'}</span>
+              </a>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <label className="px-3.5 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition">
-                <Upload className="w-4 h-4" />
-                <span>{isEn ? 'Import File (PDF, EPUB...)' : 'Importer un fichier'}</span>
+            <div className="flex flex-col sm:flex-row gap-2 text-xs">
+              <input
+                type="text"
+                value={playStoreQuery}
+                onChange={(e) => setPlayStoreQuery(e.target.value)}
+                placeholder={
+                  isEn
+                    ? 'Search book title on Play Store (e.g. Bible, Prayer, Joyce Meyer...)'
+                    : 'Chercher un titre sur Play Store (ex: Bible, Prière, Foi...)'
+                }
+                className="flex-1 px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder:text-blue-200/70"
+              />
+              <a
+                href={playStoreHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2.5 rounded-xl bg-white text-[#0b1f42] hover:bg-blue-50 font-bold flex items-center justify-center gap-1.5"
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span>{isEn ? 'Search Play Store' : 'Rechercher sur Play Store'}</span>
+              </a>
+              <label className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center justify-center gap-1.5 cursor-pointer">
+                <Upload className="w-3.5 h-3.5" />
+                <span>
+                  {isEn ? 'Add downloaded book to Vault' : 'Importer livre téléchargé → Coffre'}
+                </span>
                 <input
                   type="file"
                   multiple
-                  accept=".pdf,.txt,.md,.doc,.docx,.epub,image/*,audio/*,video/*"
+                  accept=".epub,.pdf,.txt,.md,.doc,.docx"
                   onChange={handleImportFiles}
                   className="hidden"
                 />
               </label>
-
-              <button
-                type="button"
-                onClick={() => setIsNoteModalOpen(true)}
-                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-xs font-bold flex items-center gap-1.5"
-              >
-                <Plus className="w-4 h-4" />
-                <span>{isEn ? 'New Private Note' : 'Écrire un document'}</span>
-              </button>
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-1.5">
-            {[
-              { id: 'all', label: isEn ? 'All' : 'Tous' },
-              { id: 'livre', label: isEn ? 'Books' : 'Livres' },
-              { id: 'etude', label: isEn ? 'Bible Studies' : 'Études' },
-              { id: 'note', label: isEn ? 'Personal Notes' : 'Notes' },
-              { id: 'certificat', label: isEn ? 'Certificates' : 'Certificats' },
-              { id: 'autre', label: isEn ? 'Other' : 'Autres' },
-            ].map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setCategoryFilter(cat.id)}
-                className={`px-3 py-1 rounded-lg text-[11px] font-semibold transition ${
-                  categoryFilter === cat.id
-                    ? 'bg-[#0b1f42] text-white dark:bg-blue-700'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                }`}
-              >
-                {cat.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredVaultDocs.map((doc) => (
-              <div
-                key={doc.id}
-                className="p-4 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 space-y-2.5 flex flex-col justify-between"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-[11px] text-slate-500">
-                    <span className="font-bold text-blue-700 dark:text-blue-400 uppercase">
-                      {doc.category}
-                      {doc.sourceUrl ? (isEn ? ' · Online Book' : ' · Livre téléchargé') : ''}
-                    </span>
-                    <span className="tabular-nums">{formatSize(doc.sizeBytes)}</span>
-                  </div>
-                  <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                    <FileText className="w-4 h-4 text-amber-500 shrink-0" />
-                    <span className="truncate">{doc.title}</span>
-                  </h4>
-                  {doc.author && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{doc.author}</p>
-                  )}
-                  {doc.description && (
-                    <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
-                      {doc.description}
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
-                  <span className="text-[11px] text-slate-400 tabular-nums">
-                    {doc.createdAt.split('T')[0]}
-                  </span>
-
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setViewingDoc(doc)}
-                      className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-semibold flex items-center gap-1"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>{isEn ? 'Read' : 'Lire'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSaveBookToPhone(doc)}
-                      className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold flex items-center gap-1"
-                      title={isEn ? 'Save to phone' : 'Enregistrer dans le téléphone'}
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">
-                        {isEn ? 'Save' : 'Téléphone'}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleShareVaultDoc(doc)}
-                      className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1"
-                      title={isEn ? 'Share' : 'Partager'}
-                    >
-                      <Share2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDelete(doc)}
-                      className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {filteredVaultDocs.length === 0 && (
-              <div className="md:col-span-2 p-8 text-center rounded-2xl bg-white dark:bg-[#0c1631] border border-dashed border-slate-300 dark:border-slate-800 space-y-2">
-                <p className="text-xs text-slate-500">
-                  {isEn
-                    ? 'Your Spiritual Vault is ready. Import local files or download real books online into your vault.'
-                    : 'Votre Coffre Spirituel est prêt. Importez vos fichiers ou téléchargez des livres religieux en ligne dans votre coffre.'}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setSubTab('library')}
-                  className="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-bold inline-flex items-center gap-1.5"
-                >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  <span>
-                    {isEn ? 'Browse Online Religious Books' : 'Télécharger des livres en ligne'}
-                  </span>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: BIBLIOTHÈQUE EN LIGNE (WIKISOURCE RÉEL) */}
-      {subTab === 'library' && (
-        <div className="space-y-4">
-          {/* Online Search on Wikisource */}
+          {/* Direct In-App Wikisource Search */}
           <form
             onSubmit={handleSearchOnlineBooks}
             className="p-4 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 flex flex-col sm:flex-row gap-2.5 text-xs"
@@ -887,8 +1056,8 @@ export const SpiritualVaultModule: React.FC = () => {
                 onChange={(e) => setOnlineSearchQuery(e.target.value)}
                 placeholder={
                   isEn
-                    ? 'Search any public-domain book online (e.g. Psalms, Augustine, Wesley...)'
-                    : 'Rechercher n’importe quel livre en ligne (ex: Psaumes, Matthieu, Saint Augustin, Bossuet...)'
+                    ? 'Search direct downloadable books inside SHALOM...'
+                    : 'Rechercher un livre directement téléchargeable dans votre coffre (Psaumes, Augustin...)'
                 }
                 className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800"
               />
@@ -903,7 +1072,7 @@ export const SpiritualVaultModule: React.FC = () => {
               ) : (
                 <Search className="w-4 h-4" />
               )}
-              <span>{isEn ? 'Search Online' : 'Rechercher'}</span>
+              <span>{isEn ? 'Search' : 'Rechercher'}</span>
             </button>
             {onlineResults.length > 0 && (
               <button
@@ -928,7 +1097,7 @@ export const SpiritualVaultModule: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {displayedOnlineBooks.map((book) => {
-              const alreadyInVault = vaultDocuments.some((d) => d.bookId === book.bookId);
+              const vaultCopy = vaultDocuments.find((d) => d.bookId === book.bookId);
               const isBusy = downloadingBookId === book.bookId;
 
               return (
@@ -960,7 +1129,6 @@ export const SpiritualVaultModule: React.FC = () => {
                     <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                       {book.description}
                     </p>
-                    <p className="text-[11px] text-slate-400 truncate">{book.sourceUrl}</p>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
@@ -969,14 +1137,14 @@ export const SpiritualVaultModule: React.FC = () => {
                       disabled={isBusy}
                       onClick={() => handleDownloadOnlineBookIntoVault(book)}
                       className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-                        alreadyInVault
+                        vaultCopy
                           ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50'
                           : 'bg-blue-700 hover:bg-blue-800 text-white'
                       }`}
                     >
                       {isBusy ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : alreadyInVault ? (
+                      ) : vaultCopy ? (
                         <CheckCircle2 className="w-3.5 h-3.5" />
                       ) : (
                         <Download className="w-3.5 h-3.5" />
@@ -986,7 +1154,7 @@ export const SpiritualVaultModule: React.FC = () => {
                           ? isEn
                             ? 'Downloading...'
                             : 'Téléchargement...'
-                          : alreadyInVault
+                          : vaultCopy
                             ? isEn
                               ? 'In My Vault'
                               : 'Dans mon coffre'
@@ -996,15 +1164,26 @@ export const SpiritualVaultModule: React.FC = () => {
                       </span>
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => handleSaveBookToPhone(book)}
-                      className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold flex items-center gap-1.5"
-                      title={isEn ? 'Save EPUB to phone' : 'Enregistrer en EPUB sur mon téléphone'}
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>{isEn ? 'Save EPUB' : 'Téléphone (EPUB)'}</span>
-                    </button>
+                    {vaultCopy ? (
+                      <button
+                        type="button"
+                        onClick={() => handleSaveDocToPhone(vaultCopy)}
+                        className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold flex items-center gap-1.5"
+                      >
+                        <Smartphone className="w-3.5 h-3.5" />
+                        <span>{isEn ? 'Send to Phone' : 'Envoyer sur téléphone'}</span>
+                      </button>
+                    ) : (
+                      <a
+                        href={book.epubUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold flex items-center gap-1.5"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>{isEn ? 'EPUB to Phone' : 'Téléphone (EPUB)'}</span>
+                      </a>
+                    )}
 
                     <button
                       type="button"
@@ -1178,11 +1357,11 @@ export const SpiritualVaultModule: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => handleSaveBookToPhone(viewingDoc)}
+                onClick={() => handleSaveDocToPhone(viewingDoc)}
                 className="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5"
               >
-                <Download className="w-3.5 h-3.5" />
-                <span>{isEn ? 'Save to Phone' : 'Enregistrer sur mon téléphone'}</span>
+                <Smartphone className="w-3.5 h-3.5" />
+                <span>{isEn ? 'Send to Phone' : 'Envoyer sur mon téléphone'}</span>
               </button>
               <button
                 type="button"
@@ -1197,14 +1376,18 @@ export const SpiritualVaultModule: React.FC = () => {
       </Modal>
 
       <ConfirmDialog
-        isOpen={!!confirmDelete}
+        isOpen={!!confirmDeleteDocs && confirmDeleteDocs.length > 0}
         title={isEn ? 'Remove from Spiritual Vault?' : 'Supprimer du Coffre Spirituel ?'}
         message={
-          confirmDelete ? `${isEn ? 'Delete' : 'Supprimer'} « ${confirmDelete.title} » ?` : ''
+          confirmDeleteDocs && confirmDeleteDocs.length === 1
+            ? `${isEn ? 'Delete' : 'Supprimer'} « ${confirmDeleteDocs[0].title} » ?`
+            : `${isEn ? 'Delete' : 'Supprimer'} ${confirmDeleteDocs?.length || 0} document(s) sélectionné(s) ?`
         }
         confirmLabel={isEn ? 'Delete' : 'Supprimer'}
+        cancelLabel={isEn ? 'Cancel' : 'Annuler'}
+        isDestructive
         onConfirm={handleConfirmDelete}
-        onCancel={() => setConfirmDelete(null)}
+        onCancel={() => setConfirmDeleteDocs(null)}
       />
 
       <SocialShareModal

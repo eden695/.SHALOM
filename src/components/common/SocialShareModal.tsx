@@ -29,6 +29,8 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
   payload,
 }) => {
   const [notice, setNotice] = useState<string | null>(null);
+  const [fallbackLink, setFallbackLink] = useState<{ label: string; url: string } | null>(null);
+  const [isBusy, setIsBusy] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,8 +44,25 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
   }, [isOpen, payload]);
 
   useEffect(() => {
-    if (!isOpen) setNotice(null);
+    if (!isOpen) {
+      setNotice(null);
+      setFallbackLink(null);
+      setIsBusy(false);
+    }
   }, [isOpen]);
+
+  // Ensure returning to SHALOM from TikTok or external share sheet never leaves UI locked
+  useEffect(() => {
+    const resetBusyState = () => setIsBusy(false);
+    window.addEventListener('focus', resetBusyState);
+    window.addEventListener('pageshow', resetBusyState);
+    document.addEventListener('visibilitychange', resetBusyState);
+    return () => {
+      window.removeEventListener('focus', resetBusyState);
+      window.removeEventListener('pageshow', resetBusyState);
+      document.removeEventListener('visibilitychange', resetBusyState);
+    };
+  }, []);
 
   if (!payload) return null;
 
@@ -52,46 +71,69 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
   const isImage = payload.file?.type.startsWith('image/');
 
   const handleNativeShare = async () => {
-    await copyTextQuietly(payload.text);
-    const result = await tryNativeShare(payload);
-    if (result === 'shared') {
-      setNotice('Partage envoyé avec succès.');
-      return;
+    if (isBusy) return;
+    setIsBusy(true);
+    setFallbackLink(null);
+    try {
+      await copyTextQuietly(payload.text);
+      const result = await tryNativeShare(payload);
+      if (result === 'shared') {
+        setNotice('Partage envoyé avec succès.');
+        return;
+      }
+      if (result === 'cancelled') {
+        setNotice('Partage annulé.');
+        return;
+      }
+      setNotice(
+        'Le menu de partage du téléphone n’est pas disponible sur ce navigateur. Utilisez un bouton ci-dessous (le texte a été copié).'
+      );
+    } finally {
+      setIsBusy(false);
     }
-    if (result === 'cancelled') return;
-    setNotice(
-      'Le partage système direct n’est pas disponible sur ce navigateur. Utilisez les boutons ci-dessous (le texte a été copié).'
-    );
   };
 
   const handlePlatformClick = async (
     platform: 'whatsapp' | 'facebook' | 'instagram' | 'x' | 'tiktok',
     label: string
   ) => {
-    await copyTextQuietly(payload.text);
+    if (isBusy) return;
+    setIsBusy(true);
+    setFallbackLink(null);
+    try {
+      await copyTextQuietly(payload.text);
 
-    // If media file is present and device supports native file share, try native share first on mobile
-    if (payload.file && (platform === 'instagram' || platform === 'tiktok' || platform === 'facebook')) {
+      // Prioritize native Android/iOS system share sheet first so both text + image/video travel together
+      // AND cancelling TikTok/Instagram/WhatsApp returns cleanly without opening an uncloseable WebView tab
       const nativeRes = await tryNativeShare(payload);
-      if (nativeRes === 'shared' || nativeRes === 'cancelled') return;
-      triggerFileDownload(payload.file, payload.file.name);
-      setNotice(
-        `Texte copié et fichier média téléchargé (${payload.file.name}). Ouvrez ${label} pour publier votre contenu.`
-      );
-      window.open(buildPlatformShareUrl(platform, payload), '_blank', 'noopener,noreferrer');
-      return;
-    }
+      if (nativeRes === 'shared') {
+        setNotice(`Partage envoyé vers ${label}.`);
+        return;
+      }
+      if (nativeRes === 'cancelled') {
+        setNotice(`Partage vers ${label} annulé.`);
+        return;
+      }
 
-    if (platform === 'whatsapp' && payload.file) {
-      const nativeRes = await tryNativeShare(payload);
-      if (nativeRes === 'shared' || nativeRes === 'cancelled') return;
-      triggerFileDownload(payload.file, payload.file.name);
-      setNotice(
-        `Texte copié et média téléchargé (${payload.file.name}). Joignez le fichier dans WhatsApp si besoin.`
-      );
+      // Fallback when navigator.share is unavailable (desktop browser or legacy WebView):
+      // Download attached media if present and display an explicit safe anchor link instead of forcing window.open
+      if (payload.file) {
+        triggerFileDownload(payload.file, payload.file.name);
+        setNotice(
+          `Texte copié et média téléchargé (${payload.file.name}). Touchez le lien ci-dessous pour ouvrir ${label} et joindre votre média.`
+        );
+      } else {
+        setNotice(
+          `Texte copié ! Touchez le lien ci-dessous pour ouvrir ${label}.`
+        );
+      }
+      setFallbackLink({
+        label,
+        url: buildPlatformShareUrl(platform, payload),
+      });
+    } finally {
+      setIsBusy(false);
     }
-
-    window.open(buildPlatformShareUrl(platform, payload), '_blank', 'noopener,noreferrer');
   };
 
   const handleCopyText = async () => {
@@ -166,7 +208,8 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
         <button
           type="button"
           onClick={handleNativeShare}
-          className="w-full py-2.5 px-4 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold flex items-center justify-center gap-2 shadow-xs transition"
+          disabled={isBusy}
+          className="w-full py-2.5 px-4 rounded-xl bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white font-bold flex items-center justify-center gap-2 shadow-xs transition"
         >
           <Smartphone className="w-4 h-4" />
           <span>
@@ -185,8 +228,9 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
               <button
                 key={p.id}
                 type="button"
+                disabled={isBusy}
                 onClick={() => handlePlatformClick(p.id, p.label)}
-                className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-xs ${p.className}`}
+                className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-xs disabled:opacity-60 ${p.className}`}
               >
                 {p.id === 'whatsapp' ? (
                   <MessageCircle className="w-3.5 h-3.5" />
@@ -194,16 +238,28 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
                   <Share2 className="w-3.5 h-3.5" />
                 )}
                 <span>{p.label}</span>
-                <ExternalLink className="w-3 h-3 opacity-80" />
               </button>
             ))}
           </div>
         </div>
 
         {notice && (
-          <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-200 flex items-start gap-2">
-            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-            <span className="leading-relaxed">{notice}</span>
+          <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-200 space-y-2">
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+              <span className="leading-relaxed">{notice}</span>
+            </div>
+            {fallbackLink && (
+              <a
+                href={fallbackLink.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs transition"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Ouvrir {fallbackLink.label}</span>
+              </a>
+            )}
           </div>
         )}
 

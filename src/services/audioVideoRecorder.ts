@@ -218,20 +218,28 @@ export class MediaRecordingManager {
   }
 
   public async acquireVideoCameraStream(facingMode: 'user' | 'environment'): Promise<MediaStream> {
+    const isPortrait =
+      typeof window !== 'undefined' && window.innerHeight >= window.innerWidth;
+    const idealW = isPortrait ? 720 : 1280;
+    const idealH = isPortrait ? 1280 : 720;
+    const idealRatio = idealW / idealH;
+
     try {
       return await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { exact: facingMode },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: idealW },
+          height: { ideal: idealH },
+          aspectRatio: { ideal: idealRatio },
         },
       });
     } catch {
       return await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: facingMode },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: idealW },
+          height: { ideal: idealH },
+          aspectRatio: { ideal: idealRatio },
         },
       });
     }
@@ -330,10 +338,9 @@ export class MediaRecordingManager {
       }
 
       // Setup offscreen canvas pipeline so camera tracks can swap live seamlessly
-      const canvas = document.createElement('canvas');
-      canvas.width = 1280;
-      canvas.height = 720;
-      this.compositeCanvas = canvas;
+      const isPortrait =
+        typeof window !== 'undefined' && window.innerHeight >= window.innerWidth;
+      const trackSettings = videoStream.getVideoTracks()[0]?.getSettings?.();
 
       const srcVideo = document.createElement('video');
       srcVideo.muted = true;
@@ -341,7 +348,28 @@ export class MediaRecordingManager {
       srcVideo.autoplay = true;
       srcVideo.srcObject = videoStream;
       await srcVideo.play().catch(() => {});
+
+      if (srcVideo.videoWidth === 0 || srcVideo.videoHeight === 0) {
+        await new Promise<void>((resolve) => {
+          const timer = window.setTimeout(resolve, 800);
+          srcVideo.onloadedmetadata = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+        });
+      }
       this.hiddenSourceVideo = srcVideo;
+
+      const canvas = document.createElement('canvas');
+      canvas.width =
+        srcVideo.videoWidth ||
+        trackSettings?.width ||
+        (isPortrait ? 720 : 1280);
+      canvas.height =
+        srcVideo.videoHeight ||
+        trackSettings?.height ||
+        (isPortrait ? 1280 : 720);
+      this.compositeCanvas = canvas;
 
       let recordingStream: MediaStream;
       if (typeof canvas.captureStream === 'function') {

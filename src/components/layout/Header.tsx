@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sun, Moon, ShieldCheck, Shield, Download, ArrowLeft } from 'lucide-react';
+import { Sun, Moon, ShieldCheck, Shield, Download, ArrowLeft, Home } from 'lucide-react';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { useLanguage } from '../../contexts/LanguageContext';
 
@@ -11,6 +11,7 @@ interface HeaderProps {
   isSecurityEnabled: boolean;
   isUnlocked: boolean;
   onLockClick: () => void;
+  onGoBack: () => void;
   onGoHome: () => void;
 }
 
@@ -22,6 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
   isSecurityEnabled,
   isUnlocked,
   onLockClick,
+  onGoBack,
   onGoHome,
 }) => {
   const { isInstallable, install, isIOS } = usePWAInstall();
@@ -30,18 +32,31 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="sticky top-0 z-30 w-full bg-white/90 dark:bg-[#060d1d]/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+      <header className="sticky top-0 z-30 w-full bg-white/90 dark:bg-[#060d1d]/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
           {showBackButton ? (
-            <button
-              type="button"
-              onClick={onGoHome}
-              className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-100 text-xs font-bold flex items-center gap-1.5 shrink-0 transition"
-              aria-label={t('header.back')}
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>{t('header.back')}</span>
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={onGoBack}
+                className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-100 text-xs font-bold flex items-center gap-1.5 shrink-0 transition"
+                aria-label={t('header.back')}
+                title={t('header.back')}
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>{t('header.back')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={onGoHome}
+                className="px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/70 text-blue-700 dark:text-blue-200 border border-blue-200/70 dark:border-blue-800/60 text-xs font-bold flex items-center gap-1.5 shrink-0 transition"
+                aria-label={t('header.home')}
+                title={t('header.home')}
+              >
+                <Home className="w-4 h-4" />
+                <span className="hidden sm:inline">{t('header.home')}</span>
+              </button>
+            </div>
           ) : (
             <button
               type="button"

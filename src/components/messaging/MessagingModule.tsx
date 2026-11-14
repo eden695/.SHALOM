@@ -10,18 +10,21 @@ import {
   Search,
   CheckSquare,
   Square,
-  Smartphone,
   Upload,
   AlertCircle,
   Plus,
   Trash2,
   History,
+  Share2,
 } from 'lucide-react';
 import { dbService, STORES } from '../../services/db';
-import { pickContactsFromDevice, importContactsFromVcfOrCsv } from '../../services/phoneContacts';
+import { importContactsFromVcfOrCsv } from '../../services/phoneContacts';
 import { useShalomDB } from '../../hooks/useShalomDB';
 import { Contact, MessageTemplate, ShareHistoryItem } from '../../types';
 import { ConfirmDialog } from '../common/ConfirmDialog';
+import { MediaPickerBox, persistOptionalMedia } from '../common/MediaAttachment';
+import { SocialShareModal } from '../common/SocialShareModal';
+import { SharePayload, tryNativeShare, normalizeMediaToShareFile } from '../../services/socialShare';
 
 interface MessagingModuleProps {
   initialContacts?: Contact[];
@@ -47,7 +50,6 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
   );
   const [recipientSearch, setRecipientSearch] = useState('');
   const [infoBanner, setInfoBanner] = useState<string | null>(null);
-  const [showVcfShortcutInBanner, setShowVcfShortcutInBanner] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [quickName, setQuickName] = useState('');
   const [quickPhone, setQuickPhone] = useState('');
@@ -59,6 +61,10 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
 
   // Optional country code override when a contact has a local number starting with 0 without '+'
   const [countryPrefixInput, setCountryPrefixInput] = useState('');
+
+  // Optional media attachment on Nouveau partage
+  const [pendingMediaFile, setPendingMediaFile] = useState<File | null>(null);
+  const [socialSharePayload, setSocialSharePayload] = useState<SharePayload | null>(null);
 
   const vcfInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -89,7 +95,7 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
   const [customMessage, setCustomMessage] = useState<string>(
     initialMessage || messageTemplates[0]?.content || 'Que la paix du Seigneur vous accompagne !'
   );
-  const [themeVariable, setThemeVariable] = useState('La Paix Divine');
+  const [themeSubject, setThemeSubject] = useState('');
 
   useEffect(() => {
     if (initialMessage) {
@@ -115,22 +121,22 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
 
   const activeContact = targetContacts[currentIndex];
 
-  const renderMessageForContact = (templateText: string, contact: Contact) => {
-    const today = new Intl.DateTimeFormat('fr-FR', {
-      day: 'numeric',
-      month: 'long',
-    }).format(new Date());
+  const composeFinalMessage = (baseText: string) => {
+    const cleanText = baseText
+      .replace(/\{\{prenom\}\}/gi, '')
+      .replace(/\{\{nom\}\}/gi, '')
+      .replace(/\{\{theme\}\}/gi, themeSubject.trim() || '')
+      .trim();
 
-    return templateText
-      .replace(/{{prenom}}/g, contact.firstName)
-      .replace(/{{nom}}/g, contact.lastName)
-      .replace(/{{theme}}/g, themeVariable)
-      .replace(/{{date}}/g, today);
+    if (themeSubject.trim() && !cleanText.toLowerCase().includes(themeSubject.trim().toLowerCase())) {
+      return `${themeSubject.trim()}\n\n${cleanText}`;
+    }
+    return cleanText;
   };
 
   const currentPreviewMessage = activeContact
-    ? renderMessageForContact(customMessage, activeContact)
-    : '';
+    ? composeFinalMessage(customMessage)
+    : composeFinalMessage(customMessage);
 
   const normalizeForWhatsapp = (rawPhone: string, prefixOverride?: string) => {
     let clean = rawPhone.replace(/[^0-9+]/g, '');
@@ -188,24 +194,9 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
     }
   };
 
-  const handlePickPhoneContacts = async () => {
-    setShowVcfShortcutInBanner(false);
-    const res = await pickContactsFromDevice(allAvailableContacts, { multiple: true });
-    if (res.message) setInfoBanner(res.message);
-    if (res.status === 'unsupported' || res.status === 'iframe_blocked') {
-      setShowVcfShortcutInBanner(true);
-    }
-    if (res.status === 'success' && res.contacts.length > 0) {
-      const pickedIds = res.contacts.map((c) => c.id);
-      setSelectedIds((prev) => Array.from(new Set([...prev, ...pickedIds])));
-      reloadData();
-    }
-  };
-
   const handleImportVcf = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setShowVcfShortcutInBanner(false);
     const { contacts: imported, addedCount } = await importContactsFromVcfOrCsv(
       file,
       allAvailableContacts
@@ -261,6 +252,30 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
     setCustomMessage(tpl.content);
   };
 
+  const handleOpenSocialShareDirect = async () => {
+    const messageText = composeFinalMessage(customMessage);
+    if (!messageText && !pendingMediaFile) {
+      setInfoBanner('Veuillez saisir un message ou joindre une image/vidéo.');
+      return;
+    }
+
+    let shareFile: File | undefined;
+    if (pendingMediaFile) {
+      shareFile = await normalizeMediaToShareFile(
+        pendingMediaFile,
+        themeSubject.trim() || 'shalom_partage',
+        pendingMediaFile.type.startsWith('video/') ? 'video' : 'image',
+        pendingMediaFile.type
+      );
+    }
+
+    setSocialSharePayload({
+      title: themeSubject.trim() || 'Partage SHALOM',
+      text: messageText,
+      file: shareFile,
+    });
+  };
+
   const handleStartCampaign = () => {
     if (targetContacts.length === 0) {
       setInfoBanner('Veuillez sélectionner au moins un destinataire dans la liste.');
@@ -273,26 +288,39 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
     setCampaignResults([]);
   };
 
-  const handleOpenExternalApp = (chooseContactInsideWhatsApp = false) => {
-    if (!activeContact) return;
-
+  const buildExternalAppUrl = (chooseContactInsideWhatsApp = false) => {
+    if (!activeContact) return '#';
     const encodedText = encodeURIComponent(currentPreviewMessage);
     const parsed = normalizeForWhatsapp(activeContact.phone, countryPrefixInput);
 
-    let appUrl: string;
     if (channel === 'whatsapp') {
       if (chooseContactInsideWhatsApp || parsed.needsCountryCode || !parsed.waNumber) {
-        appUrl = `https://wa.me/?text=${encodedText}`;
-      } else {
-        appUrl = `https://wa.me/${parsed.waNumber}?text=${encodedText}`;
+        return `https://wa.me/?text=${encodedText}`;
       }
-    } else {
-      const smsPhone = parsed.e164 || activeContact.phone.replace(/[^0-9+]/g, '');
-      appUrl = `sms:${smsPhone}?body=${encodedText}`;
+      return `https://wa.me/${parsed.waNumber}?text=${encodedText}`;
     }
+    const smsPhone = parsed.e164 || activeContact.phone.replace(/[^0-9+]/g, '');
+    return `sms:${smsPhone}?body=${encodedText}`;
+  };
 
-    window.open(appUrl, '_blank');
-    setWaitingConfirmation(true);
+  const handleNativeShareWithMediaForContact = async () => {
+    if (!pendingMediaFile) return;
+    const shareFile = await normalizeMediaToShareFile(
+      pendingMediaFile,
+      themeSubject.trim() || 'shalom_message',
+      pendingMediaFile.type.startsWith('video/') ? 'video' : 'image',
+      pendingMediaFile.type
+    );
+    const res = await tryNativeShare({
+      title: themeSubject.trim() || 'SHALOM',
+      text: currentPreviewMessage,
+      file: shareFile,
+    });
+    if (res === 'shared') {
+      setWaitingConfirmation(true);
+    } else if (res === 'unsupported') {
+      setInfoBanner('Utilisez le bouton « Partager sur WhatsApp / Réseaux sociaux » ou ouvrez WhatsApp ci-dessous.');
+    }
   };
 
   const handleSaveCountryPrefixToContact = async () => {
@@ -310,6 +338,13 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
   const handleConfirmResult = async (status: 'confirme_envoye' | 'ignore' | 'echec') => {
     if (!activeContact) return;
 
+    const mediaMeta = pendingMediaFile
+      ? await persistOptionalMedia({
+          prefix: 'share_hist',
+          pendingFile: pendingMediaFile,
+        })
+      : {};
+
     const historyItem: ShareHistoryItem = {
       id: `share_${Date.now()}`,
       contactName: `${activeContact.firstName} ${activeContact.lastName}`.trim(),
@@ -318,6 +353,7 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
       channel,
       status,
       timestamp: new Date().toISOString(),
+      ...mediaMeta,
     };
 
     await dbService.put(STORES.SHARE_HISTORY, historyItem);
@@ -366,10 +402,10 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
         <div>
           <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2 font-display">
             <MessageSquare className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-            <span>Partage WhatsApp & SMS</span>
+            <span>Partage WhatsApp & Réseaux</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Choisissez vos destinataires dans votre répertoire et envoyez un message personnel avec confirmation manuelle.
+            Composez un message avec image ou vidéo et partagez sur WhatsApp, SMS ou réseaux sociaux.
           </p>
         </div>
 
@@ -403,25 +439,14 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
       </div>
 
       {infoBanner && (
-        <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-xs text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between gap-3">
           <span className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{infoBanner}</span>
           </span>
-          <div className="flex items-center gap-2 shrink-0">
-            {showVcfShortcutInBanner && (
-              <button
-                type="button"
-                onClick={() => vcfInputRef.current?.click()}
-                className="px-2.5 py-1 rounded-lg bg-blue-700 text-white font-bold"
-              >
-                Choisir fichier .vcf
-              </button>
-            )}
-            <button type="button" onClick={() => setInfoBanner(null)} className="font-bold underline">
-              Fermer
-            </button>
-          </div>
+          <button type="button" onClick={() => setInfoBanner(null)} className="font-bold underline shrink-0">
+            Fermer
+          </button>
         </div>
       )}
 
@@ -435,32 +460,33 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
 
       {activeSubTab === 'history' && !campaignStarted ? (
         <div className="space-y-4">
-          <div className="p-3.5 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={handleSelectAllHistory}
-              disabled={shareHistory.length === 0}
-              className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5 disabled:opacity-40"
-            >
-              {selectedHistoryIds.length === shareHistory.length && shareHistory.length > 0 ? (
-                <CheckSquare className="w-4 h-4 text-blue-600" />
-              ) : (
-                <Square className="w-4 h-4 text-slate-400" />
-              )}
-              <span>Tout sélectionner ({selectedHistoryIds.length})</span>
-            </button>
-
-            {selectedHistoryIds.length > 0 && (
+          {shareHistory.length > 0 && (
+            <div className="p-3.5 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
               <button
                 type="button"
-                onClick={() => setIsBulkDeleteHistoryOpen(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1.5"
+                onClick={handleSelectAllHistory}
+                className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Supprimer la sélection ({selectedHistoryIds.length})</span>
+                {selectedHistoryIds.length === shareHistory.length && shareHistory.length > 0 ? (
+                  <CheckSquare className="w-4 h-4 text-blue-600" />
+                ) : (
+                  <Square className="w-4 h-4 text-slate-400" />
+                )}
+                <span>Tout sélectionner ({selectedHistoryIds.length})</span>
               </button>
-            )}
-          </div>
+
+              {selectedHistoryIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsBulkDeleteHistoryOpen(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Supprimer la sélection ({selectedHistoryIds.length})</span>
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="space-y-2.5">
             {shareHistory.map((item) => {
@@ -500,11 +526,19 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
             })}
 
             {shareHistory.length === 0 && (
-              <div className="py-12 text-center rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 space-y-1">
-                <History className="w-9 h-9 text-slate-400 mx-auto mb-2" />
+              <div className="py-12 text-center rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 space-y-3">
+                <History className="w-9 h-9 text-slate-400 mx-auto" />
                 <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                   Aucun envoi enregistré pour le moment.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab('compose')}
+                  className="px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold inline-flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Créer un partage</span>
+                </button>
               </div>
             )}
           </div>
@@ -531,7 +565,7 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
                   </div>
                   <div className="text-left">
                     <span className="text-xs block font-bold">WhatsApp</span>
-                    <span className="text-[10px] text-slate-500">Texte prérempli</span>
+                    <span className="text-[10px] text-slate-500">Texte et média</span>
                   </div>
                 </button>
 
@@ -577,6 +611,19 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
                 ))}
               </div>
 
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Sujet / thème
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Sujet de prière ou verset du jour..."
+                  value={themeSubject}
+                  onChange={(e) => setThemeSubject(e.target.value)}
+                  className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                />
+              </div>
+
               <textarea
                 rows={4}
                 value={customMessage}
@@ -584,26 +631,20 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
                 className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
               />
 
-              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                <span>Variables :</span>
-                {['{{prenom}}', '{{nom}}', '{{theme}}'].map((v) => (
-                  <code key={v} className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-blue-600">
-                    {v}
-                  </code>
-                ))}
-              </div>
+              <MediaPickerBox
+                pendingFile={pendingMediaFile}
+                onSelectFile={setPendingMediaFile}
+                label="Joindre une image ou vidéo au partage (optionnel)"
+              />
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Sujet / thème ({'{{theme}}'})
-                </label>
-                <input
-                  type="text"
-                  value={themeVariable}
-                  onChange={(e) => setThemeVariable(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
-                />
-              </div>
+              <button
+                type="button"
+                onClick={handleOpenSocialShareDirect}
+                className="w-full py-2.5 px-4 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center justify-center gap-2 transition shadow-xs"
+              >
+                <Share2 className="w-4 h-4" />
+                <span>Partager sur WhatsApp, Facebook, Instagram, X ou TikTok</span>
+              </button>
             </div>
           </div>
 
@@ -614,16 +655,16 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
               </label>
 
               <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={handlePickPhoneContacts}
-                  className="w-full px-3 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition"
-                >
-                  <Smartphone className="w-4 h-4" />
-                  <span>Ouvrir le répertoire du téléphone</span>
-                </button>
-
                 <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickAdd((prev) => !prev)}
+                    className="px-2.5 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-[11px] font-bold flex items-center justify-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Saisir un numéro</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => vcfInputRef.current?.click()}
@@ -631,15 +672,6 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
                   >
                     <Upload className="w-3.5 h-3.5 text-blue-600" />
                     <span>Importer .vcf</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowQuickAdd((prev) => !prev)}
-                    className="px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-semibold flex items-center justify-center gap-1.5"
-                  >
-                    <Plus className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Saisir un numéro</span>
                   </button>
                 </div>
 
@@ -676,41 +708,43 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
                 )}
               </div>
 
-              <div className="space-y-2">
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Rechercher un contact..."
-                    value={recipientSearch}
-                    onChange={(e) => setRecipientSearch(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800"
-                  />
-                </div>
+              {allAvailableContacts.length > 0 && (
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Rechercher un contact..."
+                      value={recipientSearch}
+                      onChange={(e) => setRecipientSearch(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800"
+                    />
+                  </div>
 
-                <div className="flex items-center justify-between gap-2">
-                  {selectedIds.length > 0 ? (
+                  <div className="flex items-center justify-between gap-2">
+                    {selectedIds.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsBulkDeleteRecipientsOpen(true)}
+                        className="text-[11px] font-bold text-red-600 hover:underline flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Supprimer ({selectedIds.length})</span>
+                      </button>
+                    ) : (
+                      <span />
+                    )}
+
                     <button
                       type="button"
-                      onClick={() => setIsBulkDeleteRecipientsOpen(true)}
-                      className="text-[11px] font-bold text-red-600 hover:underline flex items-center gap-1"
+                      onClick={handleToggleAllFiltered}
+                      className="text-[11px] font-semibold text-blue-700 dark:text-blue-400 hover:underline"
                     >
-                      <Trash2 className="w-3 h-3" />
-                      <span>Supprimer ({selectedIds.length})</span>
+                      Tout sélectionner
                     </button>
-                  ) : (
-                    <span />
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={handleToggleAllFiltered}
-                    className="text-[11px] font-semibold text-blue-700 dark:text-blue-400 hover:underline"
-                  >
-                    Tout cocher / décocher
-                  </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
                 {filteredDirectory.map((c) => {
@@ -744,7 +778,7 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
                 })}
                 {filteredDirectory.length === 0 && (
                   <p className="text-xs text-slate-500 text-center py-4">
-                    Aucun contact trouvé.
+                    Aucun contact dans votre liste. Utilisez « Saisir un numéro » ci-dessus.
                   </p>
                 )}
               </div>
@@ -757,7 +791,7 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
               >
                 <Send className="w-4 h-4" />
                 <span>
-                  Envoyer ({targetContacts.length} sélectionné{targetContacts.length > 1 ? 's' : ''})
+                  Envoyer aux contacts ({targetContacts.length})
                 </span>
               </button>
             </div>
@@ -884,9 +918,22 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
 
           {!waitingConfirmation ? (
             <div className="space-y-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => handleOpenExternalApp(false)}
+              {pendingMediaFile && (
+                <button
+                  type="button"
+                  onClick={handleNativeShareWithMediaForContact}
+                  className="w-full py-3.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-sm transition"
+                >
+                  <Share2 className="w-4 h-4" />
+                  <span>Envoyer texte + média via le menu du téléphone</span>
+                </button>
+              )}
+
+              <a
+                href={buildExternalAppUrl(false)}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setWaitingConfirmation(true)}
                 className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-sm transition"
               >
                 <ExternalLink className="w-4 h-4" />
@@ -897,16 +944,18 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
                       : 'Ouvrir WhatsApp'
                     : 'Ouvrir SMS'}
                 </span>
-              </button>
+              </a>
 
               {channel === 'whatsapp' && !activePhoneCheck?.needsCountryCode && (
-                <button
-                  type="button"
-                  onClick={() => handleOpenExternalApp(true)}
-                  className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs transition"
+                <a
+                  href={buildExternalAppUrl(true)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setWaitingConfirmation(true)}
+                  className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs flex items-center justify-center transition"
                 >
                   Ou choisir le destinataire directement dans WhatsApp
-                </button>
+                </a>
               )}
 
               <div className="flex items-center justify-between text-xs text-slate-500 pt-2">
@@ -965,6 +1014,12 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
           )}
         </div>
       )}
+
+      <SocialShareModal
+        isOpen={!!socialSharePayload}
+        onClose={() => setSocialSharePayload(null)}
+        payload={socialSharePayload}
+      />
 
       <ConfirmDialog
         isOpen={isBulkDeleteRecipientsOpen}

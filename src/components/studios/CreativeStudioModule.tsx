@@ -15,11 +15,16 @@ import {
   Eraser,
   CheckCircle2,
   Sparkles,
+  CheckSquare,
+  Square,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { useShalomDB } from '../../hooks/useShalomDB';
 import { dbService, STORES } from '../../services/db';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { CreativeDesignItem } from '../../types';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { SocialShareModal } from '../common/SocialShareModal';
 import { SharePayload } from '../../services/socialShare';
 
@@ -125,9 +130,20 @@ export const CreativeStudioModule: React.FC = () => {
     offsetY: number;
   } | null>(null);
 
+  // Two-finger pinch-to-zoom state
+  const pinchStateRef = useRef<{
+    startDist: number;
+    layerId: string;
+    startFontSize?: number;
+    startWidth?: number;
+    startHeight?: number;
+  } | null>(null);
+
   const [notice, setNotice] = useState<string | null>(null);
   const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
   const [savedPreviews, setSavedPreviews] = useState<Record<string, string>>({});
+  const [selectedCreationIds, setSelectedCreationIds] = useState<string[]>([]);
+  const [confirmDeleteCreations, setConfirmDeleteCreations] = useState<CreativeDesignItem[] | null>(null);
 
   const dims = FORMAT_DIMS[formatRatio];
 
@@ -421,6 +437,7 @@ export const CreativeStudioModule: React.FC = () => {
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (pinchStateRef.current) return;
     const pt = getCanvasPoint(e);
     if (isDrawMode) {
       const stroke: DrawStroke = {
@@ -437,8 +454,8 @@ export const CreativeStudioModule: React.FC = () => {
     // Hit-test layers from top to bottom
     for (let i = layers.length - 1; i >= 0; i--) {
       const l = layers[i];
-      const hw = l.kind === 'text' ? 240 : l.width / 2 + 12;
-      const hh = l.kind === 'text' ? 90 : l.height / 2 + 12;
+      const hw = l.kind === 'text' ? Math.max(240, l.text.length * l.fontSize * 0.35) : l.width / 2 + 16;
+      const hh = l.kind === 'text' ? Math.max(90, l.fontSize * 1.4) : l.height / 2 + 16;
       if (Math.abs(pt.x - l.x) <= hw && Math.abs(pt.y - l.y) <= hh) {
         setSelectedLayerId(l.id);
         dragStateRef.current = {
@@ -453,6 +470,7 @@ export const CreativeStudioModule: React.FC = () => {
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (pinchStateRef.current) return;
     const pt = getCanvasPoint(e);
     if (isDrawMode && activeStrokeRef.current) {
       activeStrokeRef.current.points.push(pt);
@@ -474,6 +492,78 @@ export const CreativeStudioModule: React.FC = () => {
       setStrokes((prev) => [...prev, finished]);
     }
     dragStateRef.current = null;
+  };
+
+  // Two-finger pinch gesture on canvas to resize selected text / shape / image
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length !== 2) return;
+    dragStateRef.current = null;
+    activeStrokeRef.current = null;
+
+    const t1 = e.touches[0];
+    const t2 = e.touches[1];
+    const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+    if (dist <= 0) return;
+
+    // Use currently selected layer, or fallback to top-most layer under pinch midpoint
+    let targetLayer = selectedLayer;
+    if (!targetLayer && canvasRef.current && layers.length > 0) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const midX = (((t1.clientX + t2.clientX) / 2 - rect.left) / rect.width) * dims.w;
+      const midY = (((t1.clientY + t2.clientY) / 2 - rect.top) / rect.height) * dims.h;
+      for (let i = layers.length - 1; i >= 0; i--) {
+        const l = layers[i];
+        const hw = l.kind === 'text' ? 280 : l.width / 2 + 40;
+        const hh = l.kind === 'text' ? 120 : l.height / 2 + 40;
+        if (Math.abs(midX - l.x) <= hw && Math.abs(midY - l.y) <= hh) {
+          targetLayer = l;
+          setSelectedLayerId(l.id);
+          break;
+        }
+      }
+    }
+
+    if (!targetLayer) return;
+
+    pinchStateRef.current = {
+      startDist: dist,
+      layerId: targetLayer.id,
+      startFontSize: targetLayer.kind === 'text' ? targetLayer.fontSize : undefined,
+      startWidth: targetLayer.kind !== 'text' ? targetLayer.width : undefined,
+      startHeight: targetLayer.kind !== 'text' ? targetLayer.height : undefined,
+    };
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (!pinchStateRef.current || e.touches.length < 2) return;
+    const t1 = e.touches[0];
+    const t2 = e.touches[1];
+    const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+    const { startDist, layerId, startFontSize, startWidth, startHeight } = pinchStateRef.current;
+    if (startDist <= 0) return;
+
+    const scale = dist / startDist;
+    setLayers((prev) =>
+      prev.map((l) => {
+        if (l.id !== layerId) return l;
+        if (l.kind === 'text' && startFontSize) {
+          const nextSize = Math.max(14, Math.min(280, Math.round(startFontSize * scale)));
+          return { ...l, fontSize: nextSize };
+        }
+        if (l.kind !== 'text' && startWidth && startHeight) {
+          const nextW = Math.max(20, Math.min(1600, Math.round(startWidth * scale)));
+          const nextH = Math.max(10, Math.min(1600, Math.round(startHeight * scale)));
+          return { ...l, width: nextW, height: nextH };
+        }
+        return l;
+      })
+    );
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length < 2) {
+      pinchStateRef.current = null;
+    }
   };
 
   const addTextLayer = () => {
@@ -683,10 +773,43 @@ export const CreativeStudioModule: React.FC = () => {
     });
   };
 
-  const handleDeleteCreation = async (item: CreativeDesignItem) => {
-    await dbService.deleteItem(STORES.MEDIA_BLOBS, item.mediaBlobKey);
-    await dbService.deleteItem(STORES.CREATIONS, item.id);
+  const handleConfirmDeleteCreations = async () => {
+    if (!confirmDeleteCreations || confirmDeleteCreations.length === 0) return;
+    const blobs = confirmDeleteCreations.map((c) => c.mediaBlobKey).filter(Boolean);
+    const ids = confirmDeleteCreations.map((c) => c.id);
+    if (blobs.length > 0) {
+      await dbService.deleteItems(STORES.MEDIA_BLOBS, blobs);
+    }
+    await dbService.deleteItems(STORES.CREATIONS, ids);
+    setSelectedCreationIds((prev) => prev.filter((id) => !ids.includes(id)));
+    setConfirmDeleteCreations(null);
     reloadData();
+  };
+
+  const toggleCreationId = (id: string) => {
+    setSelectedCreationIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleAllCreations = () => {
+    const allIds = creations.map((c) => c.id);
+    const allSel = allIds.length > 0 && allIds.every((id) => selectedCreationIds.includes(id));
+    setSelectedCreationIds(allSel ? [] : allIds);
+  };
+
+  const resizeSelectedByFactor = (factor: number) => {
+    if (!selectedLayer) return;
+    if (selectedLayer.kind === 'text') {
+      updateSelectedLayer({
+        fontSize: Math.max(14, Math.min(280, Math.round(selectedLayer.fontSize * factor))),
+      });
+    } else {
+      updateSelectedLayer({
+        width: Math.max(20, Math.min(1600, Math.round(selectedLayer.width * factor))),
+        height: Math.max(10, Math.min(1600, Math.round(selectedLayer.height * factor))),
+      });
+    }
   };
 
   return (
@@ -793,8 +916,8 @@ export const CreativeStudioModule: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        {/* Left: Interactive Canvas + Export */}
-        <div className="space-y-4">
+        {/* Left: Interactive Canvas + Immediate Contextual Controls + Export */}
+        <div className="space-y-3">
           <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 flex items-center justify-center">
             <canvas
               ref={canvasRef}
@@ -802,9 +925,136 @@ export const CreativeStudioModule: React.FC = () => {
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
               onPointerLeave={handlePointerUp}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
               className="max-w-full max-h-[480px] w-auto h-auto rounded-xl shadow-xl touch-none cursor-crosshair bg-white"
             />
           </div>
+
+          {/* Immediate contextual bar right under canvas when an element is clicked */}
+          {selectedLayer && (
+            <div className="p-3.5 rounded-2xl bg-blue-50/90 dark:bg-[#0f2347] border border-blue-200 dark:border-blue-800 space-y-2.5 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-extrabold text-blue-800 dark:text-blue-200 uppercase tracking-wider text-[11px]">
+                  {selectedLayer.kind === 'text'
+                    ? 'Zone de texte sélectionnée'
+                    : selectedLayer.kind === 'shape'
+                      ? 'Forme sélectionnée'
+                      : 'Image sélectionnée'}{' '}
+                  · Pincer 2 doigts pour zoomer
+                </span>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => resizeSelectedByFactor(0.85)}
+                    className="p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                    title="Réduire la taille"
+                  >
+                    <ZoomOut className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => resizeSelectedByFactor(1.15)}
+                    className="p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                    title="Agrandir la taille"
+                  >
+                    <ZoomIn className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={deleteSelectedLayer}
+                    className="px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Supprimer</span>
+                  </button>
+                </div>
+              </div>
+
+              {selectedLayer.kind === 'text' && (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={selectedLayer.text}
+                    onChange={(e) => updateSelectedLayer({ text: e.target.value })}
+                    placeholder="Texte..."
+                    className="w-full px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold"
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={selectedLayer.fontFamily}
+                      onChange={(e) => updateSelectedLayer({ fontFamily: e.target.value })}
+                      className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                    >
+                      {FONT_CHOICES.map((f) => (
+                        <option key={f.label} value={f.value}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="color"
+                      value={selectedLayer.color}
+                      onChange={(e) => updateSelectedLayer({ color: e.target.value })}
+                      title="Couleur du texte"
+                      className="w-8 h-7 rounded cursor-pointer"
+                    />
+                    <span className="font-semibold tabular-nums">{selectedLayer.fontSize}px</span>
+                    <button
+                      type="button"
+                      onClick={() => updateSelectedLayer({ bold: !selectedLayer.bold })}
+                      className={`px-2 py-1 rounded-lg font-bold border ${
+                        selectedLayer.bold
+                          ? 'bg-blue-700 text-white border-blue-700'
+                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      G
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateSelectedLayer({ italic: !selectedLayer.italic })}
+                      className={`px-2 py-1 rounded-lg italic border ${
+                        selectedLayer.italic
+                          ? 'bg-blue-700 text-white border-blue-700'
+                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      I
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {selectedLayer.kind === 'shape' && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-1.5 font-semibold">
+                    <span>Couleur</span>
+                    <input
+                      type="color"
+                      value={selectedLayer.fillColor === 'transparent' ? '#ffffff' : selectedLayer.fillColor}
+                      onChange={(e) => updateSelectedLayer({ fillColor: e.target.value })}
+                      className="w-8 h-7 rounded cursor-pointer"
+                    />
+                  </label>
+                  <label className="flex items-center gap-1.5 font-semibold">
+                    <span>Bordure</span>
+                    <input
+                      type="color"
+                      value={selectedLayer.strokeColor}
+                      onChange={(e) => updateSelectedLayer({ strokeColor: e.target.value })}
+                      className="w-8 h-7 rounded cursor-pointer"
+                    />
+                  </label>
+                  <span className="text-[11px] font-semibold tabular-nums text-slate-600 dark:text-slate-300">
+                    {selectedLayer.width}×{selectedLayer.height}px
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-2">
             <button
@@ -1261,47 +1511,116 @@ export const CreativeStudioModule: React.FC = () => {
       {/* Saved Designs Gallery */}
       {creations.length > 0 && (
         <div className="space-y-3 pt-2">
-          <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-            {isEn ? 'My Saved Creations' : 'Mes créations enregistrées'}
-          </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
-            {creations.map((item) => (
-              <div
-                key={item.id}
-                className="p-2.5 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 space-y-2"
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+              {isEn ? 'My Saved Creations' : 'Mes créations enregistrées'}
+            </h3>
+
+            <div className="flex items-center gap-2 text-xs">
+              <button
+                type="button"
+                onClick={toggleAllCreations}
+                className="font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5 hover:text-blue-700"
               >
-                {savedPreviews[item.id] && (
-                  <img
-                    src={savedPreviews[item.id]}
-                    alt={item.title}
-                    className="w-full h-36 object-cover rounded-xl bg-slate-100 dark:bg-slate-900"
-                  />
+                {creations.every((c) => selectedCreationIds.includes(c.id)) ? (
+                  <CheckSquare className="w-4 h-4 text-blue-600" />
+                ) : (
+                  <Square className="w-4 h-4 text-slate-400" />
                 )}
-                <div className="text-xs font-bold truncate text-slate-900 dark:text-white">
-                  {item.title}
+                <span>Tout sélectionner ({selectedCreationIds.length})</span>
+              </button>
+
+              {selectedCreationIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setConfirmDeleteCreations(
+                      creations.filter((c) => selectedCreationIds.includes(c.id))
+                    )
+                  }
+                  className="px-3 py-1 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold flex items-center gap-1"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Supprimer ({selectedCreationIds.length})</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
+            {creations.map((item) => {
+              const isSel = selectedCreationIds.includes(item.id);
+              return (
+                <div
+                  key={item.id}
+                  className={`p-2.5 rounded-2xl bg-white dark:bg-[#0c1631] border space-y-2 transition ${
+                    isSel
+                      ? 'border-blue-600 ring-2 ring-blue-600/20'
+                      : 'border-slate-200/80 dark:border-slate-800/80'
+                  }`}
+                >
+                  <div className="relative">
+                    {savedPreviews[item.id] && (
+                      <img
+                        src={savedPreviews[item.id]}
+                        alt={item.title}
+                        className="w-full h-36 object-cover rounded-xl bg-slate-100 dark:bg-slate-900"
+                      />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => toggleCreationId(item.id)}
+                      aria-label="Sélectionner cette création"
+                      className="absolute top-2 left-2 p-1 rounded-lg bg-white/90 dark:bg-slate-900/90 shadow-xs"
+                    >
+                      {isSel ? (
+                        <CheckSquare className="w-4 h-4 text-blue-600" />
+                      ) : (
+                        <Square className="w-4 h-4 text-slate-500" />
+                      )}
+                    </button>
+                  </div>
+                  <div className="text-xs font-bold truncate text-slate-900 dark:text-white">
+                    {item.title}
+                  </div>
+                  <div className="flex items-center justify-between gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleShareSavedItem(item)}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold flex items-center gap-1"
+                    >
+                      <Share2 className="w-3 h-3" />
+                      <span>{isEn ? 'Share' : 'Partager'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteCreations([item])}
+                      className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between gap-1">
-                  <button
-                    type="button"
-                    onClick={() => handleShareSavedItem(item)}
-                    className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold flex items-center gap-1"
-                  >
-                    <Share2 className="w-3 h-3" />
-                    <span>{isEn ? 'Share' : 'Partager'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteCreation(item)}
-                    className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={!!confirmDeleteCreations && confirmDeleteCreations.length > 0}
+        title={isEn ? 'Delete creation(s)?' : 'Supprimer la sélection ?'}
+        message={
+          confirmDeleteCreations && confirmDeleteCreations.length === 1
+            ? `${isEn ? 'Delete' : 'Supprimer'} « ${confirmDeleteCreations[0].title} » ?`
+            : `${isEn ? 'Delete' : 'Supprimer'} ${confirmDeleteCreations?.length || 0} création(s) ?`
+        }
+        confirmLabel={isEn ? 'Delete' : 'Supprimer'}
+        cancelLabel={isEn ? 'Cancel' : 'Annuler'}
+        isDestructive
+        onConfirm={handleConfirmDeleteCreations}
+        onCancel={() => setConfirmDeleteCreations(null)}
+      />
 
       <SocialShareModal
         isOpen={!!sharePayload}

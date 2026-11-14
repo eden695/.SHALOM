@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useShalomDB } from './hooks/useShalomDB';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { RecordingProvider } from './contexts/RecordingContext';
@@ -32,6 +32,8 @@ function ShalomAppShell() {
   const { userProfile, loading } = useShalomDB();
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [tabHistory, setTabHistory] = useState<string[]>(['dashboard']);
+  const isPopStateNavRef = useRef(false);
 
   // Theme Management
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -111,8 +113,54 @@ function ShalomAppShell() {
       return;
     }
 
+    if (tab === activeTab) return;
+
+    setTabHistory((prev) => {
+      if (tab === 'dashboard') return ['dashboard'];
+      return [...prev, tab];
+    });
     setActiveTab(tab);
+
+    if (!isPopStateNavRef.current) {
+      try {
+        window.history.pushState({ shalomTab: tab }, '');
+      } catch {
+        // ignore history push errors in restricted contexts
+      }
+    }
   };
+
+  const handleGoBack = useCallback(() => {
+    setTabHistory((prev) => {
+      if (prev.length <= 1) {
+        setActiveTab('dashboard');
+        return ['dashboard'];
+      }
+      const nextStack = prev.slice(0, -1);
+      const previousTab = nextStack[nextStack.length - 1] || 'dashboard';
+      setActiveTab(previousTab);
+      return nextStack;
+    });
+  }, []);
+
+  const handleGoHome = useCallback(() => {
+    setTabHistory(['dashboard']);
+    setActiveTab('dashboard');
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (activeTab !== 'dashboard') {
+        isPopStateNavRef.current = true;
+        handleGoBack();
+        window.setTimeout(() => {
+          isPopStateNavRef.current = false;
+        }, 0);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [activeTab, handleGoBack]);
 
   const [campaignContacts, setCampaignContacts] = useState<Contact[] | undefined>(undefined);
   const [campaignMessage, setCampaignMessage] = useState<string | undefined>(undefined);
@@ -168,7 +216,8 @@ function ShalomAppShell() {
           isSecurityEnabled={securityConfig.isEnabled}
           isUnlocked={isAppSessionUnlocked() || !isLaunchLockOpen}
           onLockClick={handleLockNow}
-          onGoHome={() => handleSelectTab('dashboard')}
+          onGoBack={handleGoBack}
+          onGoHome={handleGoHome}
         />
 
         <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 pb-24 lg:pb-10">
@@ -191,8 +240,9 @@ function ShalomAppShell() {
                 handleSelectTab('messaging');
               }}
               onOpenWhatsAppShare={(text: string) => {
-                const encoded = encodeURIComponent(text);
-                window.open(`https://wa.me/?text=${encoded}`, '_blank');
+                setCampaignContacts(undefined);
+                setCampaignMessage(text);
+                handleSelectTab('messaging');
               }}
             />
           )}
@@ -270,6 +320,7 @@ function ShalomAppShell() {
             unlockFeatureSession(pendingFeatureUnlock.lockId);
             const target = pendingFeatureUnlock.tab;
             setPendingFeatureUnlock(null);
+            setTabHistory((prev) => [...prev, target]);
             setActiveTab(target);
           }}
           onCancel={() => setPendingFeatureUnlock(null)}

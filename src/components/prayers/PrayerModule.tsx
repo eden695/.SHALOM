@@ -16,21 +16,22 @@ import {
   CheckSquare,
   Square,
   Send,
-  Smartphone,
   Upload,
   CheckCircle2,
 } from 'lucide-react';
 import { dbService, STORES } from '../../services/db';
-import {
-  pickContactsFromDevice,
-  importContactsFromVcfOrCsv,
-  isNativeContactPickerSupported,
-} from '../../services/phoneContacts';
+import { importContactsFromVcfOrCsv } from '../../services/phoneContacts';
 import { useShalomDB } from '../../hooks/useShalomDB';
 import { PrayerItem, TestimonyItem, PrayerCategory, PrayerStatus, Contact } from '../../types';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { SocialShareModal } from '../common/SocialShareModal';
+import {
+  MediaPickerBox,
+  StoredMediaViewer,
+  persistOptionalMedia,
+  loadMediaAsShareFile,
+} from '../common/MediaAttachment';
 import { SharePayload, normalizeMediaToShareFile } from '../../services/socialShare';
 
 interface PrayerModuleProps {
@@ -89,11 +90,12 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
-  const contactPickerAvailable = isNativeContactPickerSupported();
 
-  // Prayer Modal
+  // Prayer Modal + optional image/video
   const [isPrayerModalOpen, setIsPrayerModalOpen] = useState(false);
   const [editingPrayer, setEditingPrayer] = useState<PrayerItem | null>(null);
+  const [prayerPendingMedia, setPrayerPendingMedia] = useState<File | null>(null);
+  const [prayerRemovedExistingMedia, setPrayerRemovedExistingMedia] = useState(false);
   const [prayerForm, setPrayerForm] = useState<{
     title: string;
     description: string;
@@ -160,7 +162,6 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
   const [socialSharePayload, setSocialSharePayload] = useState<SharePayload | null>(null);
 
   const vcfPrayerInputRef = useRef<HTMLInputElement | null>(null);
-  const [showVcfShortcutInDirectory, setShowVcfShortcutInDirectory] = useState(false);
 
   const CATEGORIES: { id: PrayerCategory; label: string }[] = [
     { id: 'personnelle', label: 'Prière Personnelle' },
@@ -197,6 +198,8 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
 
   const handleOpenAddPrayer = () => {
     setEditingPrayer(null);
+    setPrayerPendingMedia(null);
+    setPrayerRemovedExistingMedia(false);
     setPrayerForm({
       title: '',
       description: '',
@@ -213,6 +216,8 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
 
   const handleOpenEditPrayer = (p: PrayerItem) => {
     setEditingPrayer(p);
+    setPrayerPendingMedia(null);
+    setPrayerRemovedExistingMedia(false);
     setPrayerForm({
       title: p.title,
       description: p.description,
@@ -246,22 +251,6 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
     });
   };
 
-  const handlePickPhoneContactsForPrayer = async () => {
-    setShowVcfShortcutInDirectory(false);
-    const res = await pickContactsFromDevice(contacts, { multiple: true });
-    if (res.message) setDirectoryNotice(res.message);
-    if (res.status === 'unsupported' || res.status === 'iframe_blocked' || res.status === 'insecure_context') {
-      setShowVcfShortcutInDirectory(true);
-    }
-    if (res.status === 'success' && res.contacts.length > 0) {
-      const pickedIds = res.contacts.map((c) => c.id);
-      setPrayerForm((prev) => ({
-        ...prev,
-        authorizedContactIds: Array.from(new Set([...prev.authorizedContactIds, ...pickedIds])),
-      }));
-      reloadData();
-    }
-  };
 
   const handleImportVcfForPrayer = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -324,6 +313,15 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
     const becameAnswered =
       prayerForm.status === 'exaucee' && (!editingPrayer || editingPrayer.status !== 'exaucee');
 
+    const mediaMeta = await persistOptionalMedia({
+      prefix: 'prayer',
+      pendingFile: prayerPendingMedia,
+      removedExisting: prayerRemovedExistingMedia,
+      existingBlobKey: editingPrayer?.mediaBlobKey,
+      existingMediaType: editingPrayer?.mediaType,
+      existingMimeType: editingPrayer?.mediaMimeType,
+    });
+
     const itemToSave: PrayerItem = {
       id: editingPrayer ? editingPrayer.id : `p_${Date.now()}`,
       title: prayerForm.title.trim(),
@@ -343,9 +341,12 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
         prayerForm.status === 'exaucee'
           ? editingPrayer?.answeredAt || now.split('T')[0]
           : undefined,
+      ...mediaMeta,
     };
 
     await dbService.put(STORES.PRAYERS, itemToSave);
+    setPrayerPendingMedia(null);
+    setPrayerRemovedExistingMedia(false);
     setIsPrayerModalOpen(false);
     await reloadData();
 
@@ -354,7 +355,7 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
     }
   };
 
-  const handleSharePrayerToSelected = (prayer: PrayerItem) => {
+  const handleSharePrayerToSelected = async (prayer: PrayerItem) => {
     const text = `🙏 *SUJET DE PRIÈRE - SHALOM*\n\n*${prayer.title}*\n${prayer.description}\n${
       prayer.bibleVerse ? `\n📖 ${prayer.bibleVerse}` : ''
     }\n\nMerci de porter ce sujet dans vos prières.`;
@@ -363,12 +364,19 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
       prayer.authorizedContactIds?.includes(c.id)
     );
 
-    if (targetContacts.length > 0 && onShareWithContacts) {
+    if (targetContacts.length > 0 && onShareWithContacts && !prayer.mediaBlobKey) {
       onShareWithContacts(targetContacts, text);
     } else {
+      const file = await loadMediaAsShareFile(
+        prayer.mediaBlobKey,
+        prayer.title,
+        prayer.mediaType,
+        prayer.mediaMimeType
+      );
       setSocialSharePayload({
         title: prayer.title,
         text,
+        file,
       });
     }
   };
@@ -452,6 +460,10 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
   const handleConfirmDelete = async () => {
     if (!deletingId) return;
     if (deleteType === 'prayer') {
+      const p = prayers.find((item) => item.id === deletingId);
+      if (p?.mediaBlobKey) {
+        await dbService.deleteItem(STORES.MEDIA_BLOBS, p.mediaBlobKey).catch(() => {});
+      }
       await dbService.deleteItem(STORES.PRAYERS, deletingId);
       setSelectedPrayerIds((prev) => prev.filter((id) => id !== deletingId));
     } else {
@@ -480,6 +492,12 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
 
   const handleBulkDeletePrayers = async () => {
     if (selectedPrayerIds.length === 0) return;
+    const blobKeys = prayers
+      .filter((p) => selectedPrayerIds.includes(p.id) && p.mediaBlobKey)
+      .map((p) => p.mediaBlobKey as string);
+    if (blobKeys.length > 0) {
+      await dbService.deleteItems(STORES.MEDIA_BLOBS, blobKeys);
+    }
     await dbService.deleteItems(STORES.PRAYERS, selectedPrayerIds);
     setSelectedPrayerIds([]);
     setIsBulkDeletePrayersOpen(false);
@@ -599,55 +617,57 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
       {/* Tab 1: Prayer Requests */}
       {activeTab === 'requests' && (
         <div className="space-y-4">
-          <div className="flex flex-col md:flex-row gap-2.5 items-stretch md:items-center justify-between">
-            <div className="flex flex-1 gap-2 flex-wrap sm:flex-nowrap">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Rechercher une requête, un verset..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-600 focus:outline-hidden"
-                />
+          {prayers.length > 0 && (
+            <div className="flex flex-col md:flex-row gap-2.5 items-stretch md:items-center justify-between">
+              <div className="flex flex-1 gap-2 flex-wrap sm:flex-nowrap">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Rechercher une requête, un verset..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-600 focus:outline-hidden"
+                  />
+                </div>
+
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="text-xs px-3 py-2 rounded-xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
+                >
+                  <option value="all">Tous sujets</option>
+                  {CATEGORIES.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={selectedStatus}
+                  onChange={(e) => setSelectedStatus(e.target.value)}
+                  className="text-xs px-3 py-2 rounded-xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
+                >
+                  <option value="all">Tous statuts</option>
+                  {STATUSES.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="text-xs px-3 py-2 rounded-xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
+              <button
+                type="button"
+                onClick={handleOpenAddPrayer}
+                className="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition"
               >
-                <option value="all">Tous sujets</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="text-xs px-3 py-2 rounded-xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
-              >
-                <option value="all">Tous statuts</option>
-                {STATUSES.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
+                <Plus className="w-4 h-4" />
+                <span>Nouvelle Prière</span>
+              </button>
             </div>
-
-            <button
-              type="button"
-              onClick={handleOpenAddPrayer}
-              className="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Nouvelle Prière</span>
-            </button>
-          </div>
+          )}
 
           {filteredPrayers.length > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-2 px-1">
@@ -736,6 +756,14 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
                     <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
                       {prayer.description}
                     </p>
+
+                    {prayer.mediaBlobKey && (
+                      <StoredMediaViewer
+                        mediaBlobKey={prayer.mediaBlobKey}
+                        mediaType={prayer.mediaType}
+                        alt={prayer.title}
+                      />
+                    )}
 
                     {prayer.bibleVerse && (
                       <p className="text-xs text-blue-800 dark:text-blue-300 font-serif italic flex items-start gap-1.5">
@@ -836,14 +864,21 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
             })}
 
             {filteredPrayers.length === 0 && (
-              <div className="col-span-full py-12 text-center rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 space-y-1">
-                <HeartHandshake className="w-10 h-10 text-slate-400 mx-auto mb-2" />
+              <div className="col-span-full py-12 text-center rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 space-y-3">
+                <HeartHandshake className="w-10 h-10 text-slate-400 mx-auto" />
                 <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  Aucune requête trouvée.
+                  {prayers.length === 0 ? 'Aucune prière enregistrée pour le moment.' : 'Aucune requête trouvée.'}
                 </p>
-                <p className="text-xs text-slate-500">
-                  Cliquez sur « Nouvelle Prière » ci-dessus pour en créer une.
-                </p>
+                {prayers.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={handleOpenAddPrayer}
+                    className="px-5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold inline-flex items-center gap-2 shadow-xs transition"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Ajouter ma première prière</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -853,30 +888,32 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
       {/* Tab 2: Testimonies */}
       {activeTab === 'testimonies' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Votre historique de témoignages et d’exaucements — partageable sur WhatsApp, Facebook, Instagram, X et TikTok.
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setAnsweredPrayerPromptTitle(null);
-                setLinkedPrayerId(undefined);
-                setTestimonyForm({
-                  title: '',
-                  content: '',
-                  bibleVerse: '',
-                  category: 'reconnaissance',
-                  authorName: currentUserName,
-                });
-                setIsTestimonyModalOpen(true);
-              }}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 self-start sm:self-auto"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Publier un Témoignage</span>
-            </button>
-          </div>
+          {testimonies.length > 0 && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Votre historique de témoignages et d’exaucements — partageable sur WhatsApp, Facebook, Instagram, X et TikTok.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setAnsweredPrayerPromptTitle(null);
+                  setLinkedPrayerId(undefined);
+                  setTestimonyForm({
+                    title: '',
+                    content: '',
+                    bibleVerse: '',
+                    category: 'reconnaissance',
+                    authorName: currentUserName,
+                  });
+                  setIsTestimonyModalOpen(true);
+                }}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 self-start sm:self-auto"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Publier un Témoignage</span>
+              </button>
+            </div>
+          )}
 
           {testimonies.length > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-2 px-1">
@@ -997,14 +1034,30 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
             })}
 
             {testimonies.length === 0 && (
-              <div className="col-span-full py-12 text-center rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 space-y-1">
-                <Sparkles className="w-10 h-10 text-amber-500 mx-auto mb-2" />
+              <div className="col-span-full py-12 text-center rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 space-y-3">
+                <Sparkles className="w-10 h-10 text-amber-500 mx-auto" />
                 <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                   Aucun témoignage enregistré pour le moment.
                 </p>
-                <p className="text-xs text-slate-500">
-                  Marquez une prière comme exaucée ou cliquez sur « Publier un Témoignage » pour célébrer une grâce.
-                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAnsweredPrayerPromptTitle(null);
+                    setLinkedPrayerId(undefined);
+                    setTestimonyForm({
+                      title: '',
+                      content: '',
+                      bibleVerse: '',
+                      category: 'reconnaissance',
+                      authorName: currentUserName,
+                    });
+                    setIsTestimonyModalOpen(true);
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center gap-2 shadow-xs transition"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Publier mon premier témoignage</span>
+                </button>
               </div>
             )}
           </div>
@@ -1158,6 +1211,18 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
             )}
           </div>
 
+          <MediaPickerBox
+            pendingFile={prayerPendingMedia}
+            existingBlobKey={editingPrayer?.mediaBlobKey}
+            existingMediaType={editingPrayer?.mediaType}
+            removedExisting={prayerRemovedExistingMedia}
+            onSelectFile={(f) => {
+              setPrayerPendingMedia(f);
+              if (f) setPrayerRemovedExistingMedia(false);
+            }}
+            onRemoveExisting={() => setPrayerRemovedExistingMedia(true)}
+          />
+
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
@@ -1184,22 +1249,11 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
           setDirectoryNotice(null);
         }}
         title="Sélectionner les personnes autorisées"
-        subtitle="Sélectionnez vos contacts SHALOM ou importez depuis votre téléphone"
+        subtitle="Choisissez parmi vos contacts SHALOM ou importez un fichier .vcf"
         maxWidth="md"
       >
         <div className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {contactPickerAvailable && (
-              <button
-                type="button"
-                onClick={handlePickPhoneContactsForPrayer}
-                className="px-3 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center justify-center gap-1.5"
-              >
-                <Smartphone className="w-3.5 h-3.5" />
-                <span>Importer depuis le téléphone</span>
-              </button>
-            )}
-
+          <div>
             <input
               ref={vcfPrayerInputRef}
               type="file"
@@ -1210,25 +1264,16 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
             <button
               type="button"
               onClick={() => vcfPrayerInputRef.current?.click()}
-              className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5"
+              className="w-full px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5"
             >
               <Upload className="w-3.5 h-3.5 text-blue-600" />
-              <span>Importer .vcf</span>
+              <span>Importer un fichier .vcf</span>
             </button>
           </div>
 
           {directoryNotice && (
-            <div className="text-[11px] p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-amber-900 dark:text-amber-200 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-[11px] p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-amber-900 dark:text-amber-200">
               <span>{directoryNotice}</span>
-              {showVcfShortcutInDirectory && (
-                <button
-                  type="button"
-                  onClick={() => vcfPrayerInputRef.current?.click()}
-                  className="px-2.5 py-1 rounded-lg bg-blue-700 text-white font-bold shrink-0"
-                >
-                  Sélectionner .vcf
-                </button>
-              )}
             </div>
           )}
 

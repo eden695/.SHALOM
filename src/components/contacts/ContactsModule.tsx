@@ -14,16 +14,10 @@ import {
   Square,
   Send,
   MapPin,
-  Smartphone,
   Info,
 } from 'lucide-react';
 import { dbService, STORES } from '../../services/db';
-import {
-  pickContactsFromDevice,
-  importContactsFromVcfOrCsv,
-  isNativeContactPickerSupported,
-  isHttpsOrLocalhost,
-} from '../../services/phoneContacts';
+import { importContactsFromVcfOrCsv } from '../../services/phoneContacts';
 import { useShalomDB } from '../../hooks/useShalomDB';
 import { Contact, ContactCategory } from '../../types';
 import { Modal } from '../common/Modal';
@@ -39,14 +33,9 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [showVcfPromptInStatus, setShowVcfPromptInStatus] = useState(false);
-
-  const contactPickerAvailable = isNativeContactPickerSupported();
-  const isSecureHttps = isHttpsOrLocalhost();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
-  const [modalNotice, setModalNotice] = useState<string | null>(null);
   const [form, setForm] = useState<{
     firstName: string;
     lastName: string;
@@ -113,7 +102,6 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
 
   const handleOpenAdd = () => {
     setEditingContact(null);
-    setModalNotice(null);
     setForm({
       firstName: '',
       lastName: '',
@@ -129,7 +117,6 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
 
   const handleOpenEdit = (c: Contact) => {
     setEditingContact(c);
-    setModalNotice(null);
     setForm({
       firstName: c.firstName,
       lastName: c.lastName,
@@ -180,7 +167,6 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
     setSelectedContactIds([]);
     setIsBulkDeleteOpen(false);
     setStatusMessage(`${count} contact(s) supprimé(s).`);
-    setShowVcfPromptInStatus(false);
     reloadData();
   };
 
@@ -207,7 +193,6 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
     document.body.removeChild(link);
     setIsExportConfirmOpen(false);
     setStatusMessage(`${contacts.length} contact(s) exporté(s) au format CSV.`);
-    setShowVcfPromptInStatus(false);
   };
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -218,44 +203,12 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
       setStatusMessage(
         `${addedCount} nouveau(x) contact(s) importé(s) (${importedContacts.length} traité(s)).`
       );
-      setShowVcfPromptInStatus(false);
+      setIsModalOpen(false);
       reloadData();
     } else {
       setStatusMessage('Aucun contact valide trouvé dans ce fichier.');
     }
     e.target.value = '';
-  };
-
-  const handlePickFromPhone = async () => {
-    setShowVcfPromptInStatus(false);
-    const res = await pickContactsFromDevice(contacts, { multiple: true });
-    if (res.message) setStatusMessage(res.message);
-    if (res.status === 'unsupported' || res.status === 'iframe_blocked' || res.status === 'insecure_context') {
-      setShowVcfPromptInStatus(true);
-    }
-    if (res.status === 'success' && res.contacts.length > 0) {
-      reloadData();
-    }
-  };
-
-  const handlePickFromPhoneInsideModal = async () => {
-    setModalNotice(null);
-    const res = await pickContactsFromDevice(contacts, { multiple: false });
-    if (res.status === 'success' && res.contacts.length > 0) {
-      const picked = res.contacts[0];
-      setForm((prev) => ({
-        ...prev,
-        firstName: picked.firstName || prev.firstName,
-        lastName: picked.lastName || prev.lastName,
-        phone: picked.phone || prev.phone,
-        email: picked.email || prev.email,
-      }));
-      setEditingContact(picked);
-      setModalNotice('Contact sélectionné depuis le répertoire du téléphone. Complétez si besoin et enregistrez.');
-      reloadData();
-    } else if (res.message) {
-      setModalNotice(res.message);
-    }
   };
 
   const handleLaunchCampaign = () => {
@@ -282,169 +235,121 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-          {contactPickerAvailable && (
+        {contacts.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
             <button
               type="button"
-              onClick={handlePickFromPhone}
-              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
+              onClick={() => setIsExportConfirmOpen(true)}
+              className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5"
             >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span>Importer depuis le téléphone</span>
+              <Download className="w-3.5 h-3.5" />
+              <span>Exporter</span>
             </button>
-          )}
 
-          <label className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
-            <Upload className="w-3.5 h-3.5" />
-            <span>Importer .vcf / CSV</span>
-            <input
-              ref={vcfImportRef}
-              type="file"
-              accept=".csv,.vcf,text/vcard"
-              onChange={handleImportFile}
-              className="hidden"
-            />
-          </label>
-
-          <button
-            type="button"
-            onClick={() => setIsExportConfirmOpen(true)}
-            disabled={contacts.length === 0}
-            className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-40 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Exporter</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleOpenAdd}
-            className="px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Ajouter</span>
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={handleOpenAdd}
+              className="px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Nouveau contact</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      {(!contactPickerAvailable || !isSecureHttps) && (
-        <div className="p-3.5 rounded-2xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-xs text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-start gap-2">
-            <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
-            <div className="space-y-0.5">
-              <p className="font-semibold">
-                {!isSecureHttps
-                  ? 'Connexion HTTPS requise pour l’importation directe depuis le répertoire Android.'
-                  : 'L’importation directe depuis le répertoire (Contact Picker API) n’est pas exposée dans ce navigateur ou WebView.'}
-              </p>
-              <p className="text-[11px] opacity-90">
-                Vous pouvez ajouter vos contacts manuellement ci-contre ou importer un fichier .vcf exporté depuis votre téléphone.
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleOpenAdd}
-            className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shrink-0 self-start sm:self-auto"
-          >
-            Ajout manuel
-          </button>
-        </div>
-      )}
+      <input
+        ref={vcfImportRef}
+        type="file"
+        accept=".csv,.vcf,text/vcard"
+        onChange={handleImportFile}
+        className="hidden"
+      />
 
       {statusMessage && (
-        <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 text-xs text-blue-900 dark:text-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 text-xs text-blue-900 dark:text-blue-200 flex items-center justify-between gap-3">
           <span className="flex items-center gap-2">
             <Info className="w-4 h-4 shrink-0" />
             <span>{statusMessage}</span>
           </span>
-          <div className="flex items-center gap-2 shrink-0">
-            {showVcfPromptInStatus && (
-              <button
-                type="button"
-                onClick={handleOpenAdd}
-                className="px-2.5 py-1 rounded-lg bg-blue-700 text-white font-bold"
-              >
-                Ajouter manuellement
-              </button>
-            )}
+          <button
+            type="button"
+            onClick={() => setStatusMessage(null)}
+            className="font-bold underline shrink-0"
+          >
+            Fermer
+          </button>
+        </div>
+      )}
+
+      {contacts.length > 0 && (
+        <div className="p-3.5 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+          <div className="flex flex-1 gap-2">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Rechercher par nom, téléphone..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+              />
+            </div>
+
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="text-xs px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
+            >
+              <option value="all">Tous ({contacts.length})</option>
+              {CATEGORIES.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => setStatusMessage(null)}
-              className="font-bold underline"
+              onClick={handleSelectAll}
+              className="text-xs text-slate-600 dark:text-slate-300 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
             >
-              Fermer
+              {selectedContactIds.length === filteredContacts.length && filteredContacts.length > 0 ? (
+                <CheckSquare className="w-4 h-4 text-blue-600" />
+              ) : (
+                <Square className="w-4 h-4 text-slate-400" />
+              )}
+              <span>Tout sélectionner ({selectedContactIds.length})</span>
+            </button>
+
+            {selectedContactIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsBulkDeleteOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Supprimer ({selectedContactIds.length})</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleLaunchCampaign}
+              disabled={filteredContacts.length === 0}
+              className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>
+                Partager WhatsApp/SMS{' '}
+                {selectedContactIds.length > 0 ? `(${selectedContactIds.length})` : `(Tous)`}
+              </span>
             </button>
           </div>
         </div>
       )}
-
-      <div className="p-3.5 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-        <div className="flex flex-1 gap-2">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Rechercher par nom, téléphone..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
-            />
-          </div>
-
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="text-xs px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
-          >
-            <option value="all">Tous ({contacts.length})</option>
-            {CATEGORIES.map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={handleSelectAll}
-            className="text-xs text-slate-600 dark:text-slate-300 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-          >
-            {selectedContactIds.length === filteredContacts.length && filteredContacts.length > 0 ? (
-              <CheckSquare className="w-4 h-4 text-blue-600" />
-            ) : (
-              <Square className="w-4 h-4 text-slate-400" />
-            )}
-            <span>Tout cocher ({selectedContactIds.length})</span>
-          </button>
-
-          {selectedContactIds.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setIsBulkDeleteOpen(true)}
-              className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Supprimer ({selectedContactIds.length})</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={handleLaunchCampaign}
-            disabled={filteredContacts.length === 0}
-            className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm"
-          >
-            <Send className="w-3.5 h-3.5" />
-            <span>
-              Partager WhatsApp/SMS{' '}
-              {selectedContactIds.length > 0 ? `(${selectedContactIds.length})` : `(Tous)`}
-            </span>
-          </button>
-        </div>
-      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
         {filteredContacts.map((contact) => {
@@ -546,18 +451,23 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
         })}
 
         {filteredContacts.length === 0 && (
-          <div className="col-span-full py-12 px-4 text-center rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 space-y-2">
+          <div className="col-span-full py-12 px-4 text-center rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 space-y-3">
             <Users className="w-10 h-10 text-slate-400 mx-auto" />
             <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
               {contacts.length === 0
                 ? 'Votre répertoire est vide pour le moment.'
                 : 'Aucun contact ne correspond à votre recherche.'}
             </p>
-            <p className="text-xs text-slate-500 max-w-md mx-auto">
-              {contactPickerAvailable
-                ? 'Cliquez sur « Importer depuis le téléphone » pour sélectionner un ou plusieurs contacts Android, importez un fichier .vcf ou ajoutez-le manuellement.'
-                : 'Ajoutez vos contacts manuellement ci-dessus ou importez un fichier .vcf exporté depuis votre téléphone.'}
-            </p>
+            {contacts.length === 0 && (
+              <button
+                type="button"
+                onClick={handleOpenAdd}
+                className="px-5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold inline-flex items-center gap-2 shadow-sm transition"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Ajouter mon premier contact</span>
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -568,24 +478,6 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
         title={editingContact ? 'Modifier le Contact' : 'Nouveau Contact'}
       >
         <form onSubmit={handleSave} className="space-y-3 text-xs">
-          {!editingContact && contactPickerAvailable && (
-            <div className="p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 space-y-2">
-              <button
-                type="button"
-                onClick={handlePickFromPhoneInsideModal}
-                className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center justify-center gap-2 transition"
-              >
-                <Smartphone className="w-4 h-4" />
-                <span>Importer depuis le téléphone</span>
-              </button>
-              {modalNotice && (
-                <p className="text-[11px] text-emerald-900 dark:text-emerald-200 leading-relaxed">
-                  {modalNotice}
-                </p>
-              )}
-            </div>
-          )}
-
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold mb-1">Prénom *</label>
@@ -666,6 +558,19 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800"
             />
           </div>
+
+          {!editingContact && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => vcfImportRef.current?.click()}
+                className="text-[11px] font-semibold text-blue-700 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Ou importer un fichier .vcf / CSV</span>
+              </button>
+            </div>
+          )}
 
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
             <button

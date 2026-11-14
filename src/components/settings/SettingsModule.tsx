@@ -60,6 +60,10 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const { lang, setLang, t, currentLanguageInfo } = useLanguage();
   const [subTab, setSubTab] = useState<string>(initialSubTab);
   const [langSearch, setLangSearch] = useState('');
+  const [draftLanguage, setDraftLanguage] = useState<AppLanguage>(
+    (userProfile?.language as AppLanguage) || lang
+  );
+  const [langAppliedNotice, setLangAppliedNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialSubTab) setSubTab(initialSubTab);
@@ -111,7 +115,12 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [storageActionMessage, setStorageActionMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (userProfile) setUserForm(userProfile);
+    if (userProfile) {
+      setUserForm(userProfile);
+      if (userProfile.language) {
+        setDraftLanguage(userProfile.language as AppLanguage);
+      }
+    }
     dbService.getStorageEstimate().then(setStorageStats);
   }, [userProfile]);
 
@@ -143,26 +152,45 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
     e.target.value = '';
   };
 
+  const handleApplyAndSaveLanguage = async () => {
+    setLangAppliedNotice(null);
+    const chosen = draftLanguage || lang;
+    const nextProfile: UserProfile = {
+      ...userForm,
+      language: chosen,
+    };
+    setLang(chosen);
+    setUserForm(nextProfile);
+    await dbService.put(STORES.PROFILES, nextProfile);
+    setLangAppliedNotice(
+      chosen === 'en'
+        ? 'Language applied and saved.'
+        : 'Langue appliquée et enregistrée.'
+    );
+    reloadData();
+  };
+
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaveNotice(null);
     setIsSavingProfile(true);
     try {
+      const chosenLang = draftLanguage || userForm.language || lang;
       const cleaned: UserProfile = {
         ...userForm,
         fullName: userForm.fullName.trim() || 'Utilisateur',
         dashboardVerseText: userForm.dashboardVerseText?.trim() || '',
         dashboardVerseRef: userForm.dashboardVerseRef?.trim() || '',
-        language: userForm.language || lang,
+        language: chosenLang,
       };
-      setLang(cleaned.language || 'fr');
+      setLang(chosenLang);
       await Promise.all([
         dbService.put(STORES.PROFILES, cleaned),
         new Promise((resolve) => setTimeout(resolve, 350)),
       ]);
       setUserForm(cleaned);
       setSaveNotice(
-        (cleaned.language || lang) === 'en'
+        chosenLang === 'en'
           ? 'Your profile, language, and home verse have been saved.'
           : 'Vos paramètres, langue, profil et verset d’accueil ont bien été enregistrés.'
       );
@@ -526,14 +554,10 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   />
 
                   <select
-                    value={userForm.language || lang}
-                    onChange={async (e) => {
-                      const chosen = e.target.value;
-                      setLang(chosen);
-                      const nextProfile = { ...userForm, language: chosen };
-                      setUserForm(nextProfile);
-                      await dbService.put(STORES.PROFILES, nextProfile);
-                      reloadData();
+                    value={draftLanguage}
+                    onChange={(e) => {
+                      setDraftLanguage(e.target.value as AppLanguage);
+                      setLangAppliedNotice(null);
                     }}
                     size={6}
                     className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800"
@@ -552,6 +576,27 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                       </option>
                     ))}
                   </select>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <span className="text-[11px] text-slate-500">
+                      Sélectionnée : <strong>{draftLanguage}</strong>
+                      {draftLanguage !== lang ? ' (non encore appliquée)' : ' (active)'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleApplyAndSaveLanguage}
+                      className="px-3.5 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center gap-1.5 transition"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Appliquer et enregistrer la langue</span>
+                    </button>
+                  </div>
+
+                  {langAppliedNotice && (
+                    <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                      {langAppliedNotice}
+                    </p>
+                  )}
                 </div>
               </div>
 

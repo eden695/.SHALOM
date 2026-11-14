@@ -4,7 +4,6 @@
 import {
   PrayerItem,
   TestimonyItem,
-  PrayerGroup,
   Contact,
   CalendarActivity,
   RecordedParole,
@@ -13,6 +12,12 @@ import {
   VaultDocument,
   CreativeDesignItem,
   WeeklyAltarDay,
+  LifeChangeGoal,
+  IntercessionPerson,
+  SpiritualCommitment,
+  SpiritualHabitLog,
+  PersonalProgram,
+  ShareHistoryItem,
 } from '../types';
 
 const DB_NAME = 'shalom_db';
@@ -95,6 +100,7 @@ class ShalomDB {
         try {
           await this.seedInitialDataIfEmpty(db);
           await this.removeLegacyDemoContacts(db);
+          await this.removeLegacySeededSamples(db);
         } catch (err) {
           console.warn('Seed warning:', err);
         }
@@ -268,18 +274,44 @@ class ShalomDB {
   }
 
   async purgeOrphanMediaBlobs(): Promise<number> {
-    const [recordings, testimonies, calendarItems, vaultDocs, creations, blobs] = await Promise.all([
+    const [
+      recordings,
+      prayers,
+      testimonies,
+      calendarItems,
+      vaultDocs,
+      creations,
+      weeklyDays,
+      lifeGoals,
+      intercessionPeople,
+      commitments,
+      habitLogs,
+      programs,
+      shareHistory,
+      blobs,
+    ] = await Promise.all([
       this.getAll<RecordedParole>(STORES.RECORDINGS),
+      this.getAll<PrayerItem>(STORES.PRAYERS),
       this.getAll<TestimonyItem>(STORES.TESTIMONIES),
       this.getAll<CalendarActivity>(STORES.CALENDAR_ACTIVITIES),
       this.getAll<VaultDocument>(STORES.VAULT_DOCUMENTS),
       this.getAll<CreativeDesignItem>(STORES.CREATIONS),
+      this.getAll<WeeklyAltarDay>(STORES.WEEKLY_ALTAR),
+      this.getAll<LifeChangeGoal>(STORES.LIFE_GOALS),
+      this.getAll<IntercessionPerson>(STORES.INTERCESSION_PEOPLE),
+      this.getAll<SpiritualCommitment>(STORES.COMMITMENTS),
+      this.getAll<SpiritualHabitLog>(STORES.HABIT_LOGS),
+      this.getAll<PersonalProgram>(STORES.PERSONAL_PROGRAMS),
+      this.getAll<ShareHistoryItem>(STORES.SHARE_HISTORY),
       this.getAll<{ id: string }>(STORES.MEDIA_BLOBS),
     ]);
     const activeKeys = new Set<string>();
     recordings.forEach((r) => {
       if (r.blobKey) activeKeys.add(r.blobKey);
       r.photoBlobKeys?.forEach((k) => activeKeys.add(k));
+    });
+    prayers.forEach((p) => {
+      if (p.mediaBlobKey) activeKeys.add(p.mediaBlobKey);
     });
     testimonies.forEach((t) => {
       if (t.mediaBlobKey) activeKeys.add(t.mediaBlobKey);
@@ -293,6 +325,28 @@ class ShalomDB {
     creations.forEach((cr) => {
       if (cr.mediaBlobKey) activeKeys.add(cr.mediaBlobKey);
     });
+    weeklyDays.forEach((d) => {
+      if (d.mediaBlobKey) activeKeys.add(d.mediaBlobKey);
+    });
+    lifeGoals.forEach((g) => {
+      if (g.mediaBlobKey) activeKeys.add(g.mediaBlobKey);
+    });
+    intercessionPeople.forEach((p) => {
+      if (p.mediaBlobKey) activeKeys.add(p.mediaBlobKey);
+    });
+    commitments.forEach((c) => {
+      if (c.mediaBlobKey) activeKeys.add(c.mediaBlobKey);
+    });
+    habitLogs.forEach((l) => {
+      if (l.mediaBlobKey) activeKeys.add(l.mediaBlobKey);
+    });
+    programs.forEach((p) => {
+      if (p.mediaBlobKey) activeKeys.add(p.mediaBlobKey);
+    });
+    shareHistory.forEach((s) => {
+      if (s.mediaBlobKey) activeKeys.add(s.mediaBlobKey);
+    });
+
     const orphanIds = blobs.map((b) => b.id).filter((id) => !activeKeys.has(id));
     if (orphanIds.length > 0) {
       await this.deleteItems(STORES.MEDIA_BLOBS, orphanIds);
@@ -383,6 +437,99 @@ class ShalomDB {
     });
   }
 
+  private async removeLegacySeededSamples(db: IDBDatabase): Promise<void> {
+    try {
+      if (localStorage.getItem('shalom_cleaned_seed_samples_v2')) return;
+    } catch {
+      // ignore
+    }
+
+    const legacyWeeklyTitles = new Set([
+      'Consécration de la semaine & Direction',
+      'Ma Famille & Mes Proches',
+      'Santé, Force & Renouvellement',
+      'Travail, Projets & Sagesse Financière',
+      'Transformation Personnelle & Sanctification',
+      'Intercession pour l’Église & les Autres',
+      'Adoration, Reconnaissance & Sabbat',
+    ]);
+
+    const cleanStore = (
+      storeName: string,
+      predicate: (item: Record<string, unknown>) => boolean
+    ) =>
+      new Promise<void>((resolve) => {
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        const req = store.getAll();
+        req.onsuccess = () => {
+          const items = (req.result as Array<Record<string, unknown>>) || [];
+          items.forEach((item) => {
+            if (predicate(item) && typeof item.id === 'string') {
+              store.delete(item.id);
+            }
+          });
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      });
+
+    await cleanStore(
+      STORES.PRAYERS,
+      (p) => p.id === 'p_1' && p.title === 'Sagesse et paix pour mes décisions'
+    );
+    await cleanStore(
+      STORES.TESTIMONIES,
+      (t) => t.id === 't_1' && t.title === 'Paix retrouvée dans ma semaine'
+    );
+    await cleanStore(
+      STORES.CALENDAR_ACTIVITIES,
+      (c) => c.id === 'cal_1' && c.title === 'Temps de prière & méditation du matin'
+    );
+    await cleanStore(
+      STORES.PRAYER_GROUPS,
+      (g) => g.id === 'pg_1' && g.name === 'Mes partenaires de prière'
+    );
+    await cleanStore(
+      STORES.WEEKLY_ALTAR,
+      (d) =>
+        typeof d.id === 'string' &&
+        d.id.startsWith('day_') &&
+        typeof d.prayerTitle === 'string' &&
+        legacyWeeklyTitles.has(d.prayerTitle)
+    );
+
+    // Strip legacy {{variable}} syntax in untouched seeded message templates
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(STORES.MESSAGE_TEMPLATES, 'readwrite');
+      const store = tx.objectStore(STORES.MESSAGE_TEMPLATES);
+      const req = store.getAll();
+      req.onsuccess = () => {
+        const templates = (req.result as MessageTemplate[]) || [];
+        templates.forEach((tpl) => {
+          if (tpl.content.includes('{{')) {
+            const cleaned = tpl.content
+              .replace(/\s*\{\{prenom\}\}/gi, '')
+              .replace(/\s*\{\{nom\}\}/gi, '')
+              .replace(/\s*:\s*\{\{theme\}\}/gi, '')
+              .replace(/\s*\{\{theme\}\}/gi, '')
+              .replace(/\s+,/g, ',')
+              .trim();
+            store.put({ ...tpl, content: cleaned });
+          }
+        });
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+
+    try {
+      localStorage.setItem('shalom_cleaned_seed_samples_v2', '1');
+    } catch {
+      // ignore
+    }
+  }
+
   private async seedInitialDataIfEmpty(db: IDBDatabase): Promise<void> {
     const checkCount = (storeName: string): Promise<number> => {
       return new Promise((resolve) => {
@@ -423,159 +570,38 @@ class ShalomDB {
           title: 'Parole d’encouragement',
           category: 'encouragement',
           content:
-            '« Que le Dieu de l’espérance vous remplisse de toute joie et de toute paix dans la foi » (Romains 15:13). Bon courage {{prenom}}, je prie pour toi !',
+            '« Que le Dieu de l’espérance vous remplisse de toute joie et de toute paix dans la foi » (Romains 15:13). Bon courage, je prie pour toi !',
         },
         {
           id: 'tpl_demande_priere',
           title: 'Partager un sujet de prière',
           category: 'demande_priere',
           content:
-            'Bonjour {{prenom}}, je voulais te confier un sujet de prière cette semaine : {{theme}}. Merci pour ton soutien dans la prière !',
+            'Bonjour, je voulais te confier un sujet de prière cette semaine. Merci pour ton soutien dans la prière !',
         },
         {
           id: 'tpl_remerciement',
           title: 'Remerciement fraternel',
           category: 'remerciement',
           content:
-            'Merci infiniment {{prenom}} pour ton soutien et tes prières. Que le Seigneur te bénisse abondamment !',
+            'Merci infiniment pour ton soutien et tes prières. Que le Seigneur te bénisse abondamment !',
         },
         {
           id: 'tpl_anniversaire',
           title: 'Vœux d’anniversaire',
           category: 'anniversaire',
           content:
-            'Joyeux anniversaire béni {{prenom}} ! Que le Seigneur couronne cette nouvelle année de vie de paix, de santé et de grâce.',
+            'Joyeux anniversaire béni ! Que le Seigneur couronne cette nouvelle année de vie de paix, de santé et de grâce.',
         },
         {
           id: 'tpl_temoignage',
           title: 'Partager un témoignage',
           category: 'temoignage',
           content:
-            'Bonjour {{prenom}}, je voulais partager avec toi une grâce du Seigneur : {{theme}}. À Lui toute la gloire !',
+            'Bonjour, je voulais partager avec toi une grâce du Seigneur. À Lui toute la gloire !',
         },
       ];
       await putAll(STORES.MESSAGE_TEMPLATES, templates);
-    }
-
-    if ((await checkCount(STORES.PRAYERS)) === 0) {
-      const initialPrayers: PrayerItem[] = [
-        {
-          id: 'p_1',
-          title: 'Sagesse et paix pour mes décisions',
-          description: 'Demande de discernement et de paix pour les choix de cette année.',
-          category: 'foi',
-          bibleVerse: 'Jacques 1:5',
-          status: 'en_priere',
-          isPrivate: true,
-          nextFollowUpDate: new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
-          createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      ];
-      await putAll(STORES.PRAYERS, initialPrayers);
-    }
-
-    if ((await checkCount(STORES.TESTIMONIES)) === 0) {
-      const initialTestimony: TestimonyItem = {
-        id: 't_1',
-        title: 'Paix retrouvée dans ma semaine',
-        content: 'Le Seigneur m’a apaisé au milieu d’une situation difficile grâce à sa Parole.',
-        date: new Date().toISOString().split('T')[0],
-        bibleVerse: 'Jean 14:27',
-        category: 'reconnaissance',
-        createdAt: new Date().toISOString(),
-      };
-      await putAll(STORES.TESTIMONIES, [initialTestimony]);
-    }
-
-    if ((await checkCount(STORES.CALENDAR_ACTIVITIES)) === 0) {
-      const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-      const calItem: CalendarActivity = {
-        id: 'cal_1',
-        title: 'Temps de prière & méditation du matin',
-        activityType: 'priere',
-        date: tomorrow,
-        time: '06h30 - 07h15',
-        description: 'Lecture des Psaumes et prière personnelle.',
-        status: 'a_venir',
-        createdAt: new Date().toISOString(),
-      };
-      await putAll(STORES.CALENDAR_ACTIVITIES, [calItem]);
-    }
-
-    if ((await checkCount(STORES.PRAYER_GROUPS)) === 0) {
-      const grp: PrayerGroup = {
-        id: 'pg_1',
-        name: 'Mes partenaires de prière',
-        description: 'Personnes de confiance avec qui partager mes sujets.',
-        memberContactIds: [],
-        prayerIds: [],
-        createdAt: new Date().toISOString(),
-      };
-      await putAll(STORES.PRAYER_GROUPS, [grp]);
-    }
-
-    if ((await checkCount(STORES.WEEKLY_ALTAR)) === 0) {
-      const now = new Date().toISOString();
-      const defaultDays: WeeklyAltarDay[] = [
-        {
-          id: 'day_1',
-          dayOfWeek: 1,
-          prayerTitle: 'Consécration de la semaine & Direction',
-          prayerFocus: 'Remettre ma semaine, mon travail et mes décisions entre les mains de Dieu.',
-          bibleVerse: 'Proverbes 3:5-6',
-          updatedAt: now,
-        },
-        {
-          id: 'day_2',
-          dayOfWeek: 2,
-          prayerTitle: 'Ma Famille & Mes Proches',
-          prayerFocus: 'Protection, unité, paix et salut pour toute ma maison.',
-          bibleVerse: 'Josué 24:15',
-          updatedAt: now,
-        },
-        {
-          id: 'day_3',
-          dayOfWeek: 3,
-          prayerTitle: 'Santé, Force & Renouvellement',
-          prayerFocus: 'Prier pour la guérison, la vitalité physique et la sérénité intérieure.',
-          bibleVerse: 'Ésaïe 40:31',
-          updatedAt: now,
-        },
-        {
-          id: 'day_4',
-          dayOfWeek: 4,
-          prayerTitle: 'Travail, Projets & Sagesse Financière',
-          prayerFocus: 'Intégrité, faveur et bénédiction sur l’œuvre de mes mains.',
-          bibleVerse: 'Psaume 90:17',
-          updatedAt: now,
-        },
-        {
-          id: 'day_5',
-          dayOfWeek: 5,
-          prayerTitle: 'Transformation Personnelle & Sanctification',
-          prayerFocus: 'Grandir dans la patience, la douceur, la maîtrise de soi et l’amour.',
-          bibleVerse: 'Galates 5:22-23',
-          updatedAt: now,
-        },
-        {
-          id: 'day_6',
-          dayOfWeek: 6,
-          prayerTitle: 'Intercession pour l’Église & les Autres',
-          prayerFocus: 'Porter les pasteurs, les malades, les amis et ceux qui souffrent.',
-          bibleVerse: '1 Timothée 2:1',
-          updatedAt: now,
-        },
-        {
-          id: 'day_0',
-          dayOfWeek: 0,
-          prayerTitle: 'Adoration, Reconnaissance & Sabbat',
-          prayerFocus: 'Rendre grâce pour les bontés de Dieu et se reposer dans sa présence.',
-          bibleVerse: 'Psaume 103:1-2',
-          updatedAt: now,
-        },
-      ];
-      await putAll(STORES.WEEKLY_ALTAR, defaultDays);
     }
   }
 }

@@ -113,15 +113,17 @@ export async function tryNativeShare(payload: SharePayload): Promise<'shared' | 
 
   const candidates: ShareData[] = [];
   if (payload.file) {
+    // Keep file + text + title together first so WhatsApp/Facebook/Instagram/X/TikTok receive both!
     candidates.push({ title: payload.title, text: payload.text, files: [payload.file] });
     candidates.push({ text: payload.text, files: [payload.file] });
     candidates.push({ files: [payload.file] });
+  } else {
+    candidates.push({
+      title: payload.title,
+      text: payload.text,
+      ...(payload.url ? { url: payload.url } : {}),
+    });
   }
-  candidates.push({
-    title: payload.title,
-    text: payload.text,
-    ...(payload.url ? { url: payload.url } : {}),
-  });
 
   for (const data of candidates) {
     if (nav.canShare && !nav.canShare(data)) continue;
@@ -129,7 +131,7 @@ export async function tryNativeShare(payload: SharePayload): Promise<'shared' | 
       await nav.share(data);
       return 'shared';
     } catch (err: unknown) {
-      if (err instanceof Error && err.name === 'AbortError') {
+      if (err instanceof Error && (err.name === 'AbortError' || err.message?.toLowerCase().includes('cancel'))) {
         return 'cancelled';
       }
     }

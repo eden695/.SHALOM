@@ -587,93 +587,98 @@ export const ParoleModule: React.FC = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            if (!recorderState.isRecording && !finishedRecording) {
-              resetFormAndPreview();
-            }
-            setIsRecordingModalOpen(true);
-          }}
-          className="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs active:scale-[0.98] transition self-start sm:self-auto"
-        >
-          {recorderState.isRecording ? (
-            <>
-              <span className="w-2.5 h-2.5 rounded-full bg-red-400 animate-pulse" />
-              <span>Reprendre la capture ({formatSeconds(recorderState.durationSeconds)})</span>
-            </>
-          ) : (
-            <>
-              <Plus className="w-4 h-4" />
-              <span>Nouvelle Parole</span>
-            </>
-          )}
-        </button>
+        {(recordings.length > 0 || recorderState.isRecording || !!finishedRecording) && (
+          <button
+            type="button"
+            onClick={() => {
+              if (!recorderState.isRecording && !finishedRecording) {
+                resetFormAndPreview();
+              }
+              setIsRecordingModalOpen(true);
+            }}
+            className="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs active:scale-[0.98] transition self-start sm:self-auto"
+          >
+            {recorderState.isRecording ? (
+              <>
+                <span className="w-2.5 h-2.5 rounded-full bg-red-400 animate-pulse" />
+                <span>Reprendre la capture ({formatSeconds(recorderState.durationSeconds)})</span>
+              </>
+            ) : (
+              <>
+                <Plus className="w-4 h-4" />
+                <span>Nouvelle Parole</span>
+              </>
+            )}
+          </button>
+        )}
       </div>
 
-      {/* Storage bar (warning text removed per user request) */}
-      <div className="p-3.5 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-300">
-        <div className="flex items-center gap-2">
-          <HardDrive className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-          <span>
-            Stockage local utilisé : <strong className="tabular-nums">{storageInfo.usageMB} Mo</strong> · Capacité disponible : <strong className="tabular-nums">{formatQuota(storageInfo.quotaMB)}</strong>
-          </span>
-        </div>
-        <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
-          Capture continue avec indicateur flottant actif
-        </span>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-2.5 items-stretch md:items-center justify-between">
-        <div className="flex flex-1 gap-2">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Rechercher par thème, prédicateur, verset..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-600 focus:outline-hidden"
-            />
+      {/* Storage bar & Filters shown only when recordings exist */}
+      {recordings.length > 0 && (
+        <>
+          <div className="p-3.5 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-300">
+            <div className="flex items-center gap-2">
+              <HardDrive className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+              <span>
+                Stockage local utilisé : <strong className="tabular-nums">{storageInfo.usageMB} Mo</strong> · Capacité disponible : <strong className="tabular-nums">{formatQuota(storageInfo.quotaMB)}</strong>
+              </span>
+            </div>
+            <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
+              Capture continue avec indicateur flottant actif
+            </span>
           </div>
 
-          <select
-            value={selectedActivity}
-            onChange={(e) => setSelectedActivity(e.target.value)}
-            className="text-xs px-3 py-2 rounded-xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
-          >
-            <option value="all">Toutes activités</option>
-            {ACTIVITY_GENRES.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.label}
-              </option>
-            ))}
-          </select>
-        </div>
+          <div className="flex flex-col md:flex-row gap-2.5 items-stretch md:items-center justify-between">
+            <div className="flex flex-1 gap-2">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Rechercher par thème, prédicateur, verset..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-600 focus:outline-hidden"
+                />
+              </div>
 
-        <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 self-start sm:self-auto">
-          {[
-            { id: 'all', label: 'Tout' },
-            { id: 'predication', label: 'Prédications' },
-            { id: 'enseignement', label: 'Enseignements' },
-            { id: 'exhortation', label: 'Exhortations' },
-          ].map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setActiveFilterType(item.id)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
-                activeFilterType === item.id
-                  ? 'bg-white dark:bg-[#0f2b5c] text-blue-700 dark:text-blue-200 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      </div>
+              <select
+                value={selectedActivity}
+                onChange={(e) => setSelectedActivity(e.target.value)}
+                className="text-xs px-3 py-2 rounded-xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
+              >
+                <option value="all">Toutes activités</option>
+                {ACTIVITY_GENRES.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 self-start sm:self-auto">
+              {[
+                { id: 'all', label: 'Tout' },
+                { id: 'predication', label: 'Prédications' },
+                { id: 'enseignement', label: 'Enseignements' },
+                { id: 'exhortation', label: 'Exhortations' },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveFilterType(item.id)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
+                    activeFilterType === item.id
+                      ? 'bg-white dark:bg-[#0f2b5c] text-blue-700 dark:text-blue-200 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Bulk Selection Bar */}
       {filteredRecordings.length > 0 && (
@@ -814,14 +819,27 @@ export const ParoleModule: React.FC = () => {
         })}
 
         {filteredRecordings.length === 0 && (
-          <div className="col-span-full py-14 text-center rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80">
-            <Mic className="w-10 h-10 text-slate-400 mx-auto mb-3" />
+          <div className="col-span-full py-14 px-6 text-center rounded-2xl bg-white dark:bg-[#0c1631] border border-dashed border-slate-300 dark:border-slate-800 space-y-3">
+            <Mic className="w-10 h-10 text-blue-600 dark:text-blue-400 mx-auto" />
             <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
               Aucune parole enregistrée pour le moment
             </p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
-              Cliquez sur « Nouvelle Parole » ci-dessus pour enregistrer un audio, une vidéo ou prendre des photos.
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+              Enregistrez votre première prédication audio, vidéo ou importez un fichier depuis votre téléphone.
             </p>
+            <button
+              type="button"
+              onClick={() => {
+                if (!recorderState.isRecording && !finishedRecording) {
+                  resetFormAndPreview();
+                }
+                setIsRecordingModalOpen(true);
+              }}
+              className="px-5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Enregistrer ma première Parole</span>
+            </button>
           </div>
         )}
       </div>
@@ -885,7 +903,7 @@ export const ParoleModule: React.FC = () => {
                   autoPlay
                   playsInline
                   muted
-                  className="w-full max-h-56 object-cover rounded-xl bg-black"
+                  className="w-full min-h-[280px] max-h-[68vh] object-cover rounded-xl bg-black"
                 />
                 {recorderState.isRecording && (
                   <button
@@ -1012,7 +1030,7 @@ export const ParoleModule: React.FC = () => {
                 )}
               </div>
             ) : finishedRecording ? (
-              <div className="space-y-3 text-center w-full max-w-sm">
+              <div className="space-y-3 text-center w-full max-w-md">
                 <div className="flex items-center justify-center gap-2 text-emerald-400 font-bold text-xs">
                   <CheckCircle2 className="w-4 h-4" />
                   <span>
@@ -1026,7 +1044,7 @@ export const ParoleModule: React.FC = () => {
                     src={finishedRecording.previewUrl}
                     controls
                     playsInline
-                    className="w-full rounded-xl max-h-44 bg-black"
+                    className="w-full rounded-xl max-h-[58vh] object-contain bg-black"
                   />
                 ) : (
                   <audio src={finishedRecording.previewUrl} controls className="w-full" />
@@ -1303,7 +1321,7 @@ export const ParoleModule: React.FC = () => {
                     controls
                     autoPlay
                     playsInline
-                    className="w-full rounded-xl max-h-64 bg-black"
+                    className="w-full rounded-xl max-h-[65vh] object-contain bg-black"
                   />
                 ) : (
                   <div className="w-full space-y-3">

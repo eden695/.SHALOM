@@ -64,6 +64,9 @@ export interface PrayerItem {
     text: string;
   }>;
   answeredAt?: string;
+  mediaBlobKey?: string;
+  mediaType?: 'image' | 'video';
+  mediaMimeType?: string;
 }
 
 export interface TestimonyItem {
@@ -191,6 +194,9 @@ export interface ShareHistoryItem {
   channel: 'whatsapp' | 'sms';
   status: 'en_attente' | 'ouvert' | 'confirme_envoye' | 'ignore' | 'echec';
   timestamp: string;
+  mediaBlobKey?: string;
+  mediaType?: 'image' | 'video';
+  mediaMimeType?: string;
 }
 
 export interface UserProfile {
@@ -214,6 +220,9 @@ export interface WeeklyAltarDay {
   prayerTitle: string;
   prayerFocus: string;
   bibleVerse?: string;
+  mediaBlobKey?: string;
+  mediaType?: 'image' | 'video';
+  mediaMimeType?: string;
   updatedAt: string;
 }
 
@@ -225,6 +234,9 @@ export interface LifeChangeGoal {
   prayerSupport?: string;
   status: 'en_cours' | 'accompli';
   progressNotes?: string;
+  mediaBlobKey?: string;
+  mediaType?: 'image' | 'video';
+  mediaMimeType?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -236,6 +248,9 @@ export interface IntercessionPerson {
   relation?: string;
   prayerTopic: string;
   lastPrayedAt?: string;
+  mediaBlobKey?: string;
+  mediaType?: 'image' | 'video';
+  mediaMimeType?: string;
   createdAt: string;
 }
 
@@ -247,6 +262,9 @@ export interface SpiritualCommitment {
   startDate: string;
   isActive: boolean;
   notes?: string;
+  mediaBlobKey?: string;
+  mediaType?: 'image' | 'video';
+  mediaMimeType?: string;
   createdAt: string;
 }
 
@@ -267,6 +285,9 @@ export interface SpiritualHabitLog {
   note?: string;
   verseRef?: string;
   verseText?: string;
+  mediaBlobKey?: string;
+  mediaType?: 'image' | 'video';
+  mediaMimeType?: string;
   createdAt: string;
 }
 
@@ -279,6 +300,9 @@ export interface PersonalProgram {
   completedDays: number;
   status: 'en_cours' | 'termine';
   year: number;
+  mediaBlobKey?: string;
+  mediaType?: 'image' | 'video';
+  mediaMimeType?: string;
   createdAt: string;
 }
 
