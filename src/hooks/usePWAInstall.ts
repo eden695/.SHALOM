@@ -52,12 +52,31 @@ export function usePWAInstall() {
           })
           .catch(() => {});
 
+        const hadController = Boolean(navigator.serviceWorker.controller);
+        const onControllerChange = () => {
+          if (!hadController) return;
+          try {
+            if (sessionStorage.getItem('shalom_sw_reloaded_v11')) return;
+            sessionStorage.setItem('shalom_sw_reloaded_v11', '1');
+          } catch {
+            // ignore storage restriction
+          }
+          window.location.reload();
+        };
+        navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+
         navigator.serviceWorker
           .register('./sw.js', { updateViaCache: 'none' })
           .then((reg) => reg.update().catch(() => {}))
           .catch((err) => {
             console.warn('SW register error:', err);
           });
+
+        return () => {
+          window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+          window.removeEventListener('appinstalled', handleAppInstalled);
+          navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+        };
       } else {
         navigator.serviceWorker.getRegistrations().then((regs) => {
           regs.forEach((reg) => reg.unregister());

@@ -17,6 +17,7 @@ import {
 import { useShalomDB } from '../../hooks/useShalomDB';
 import { dbService, STORES } from '../../services/db';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useModuleSubView } from '../../contexts/NavigationContext';
 import {
   SpiritualHabitLog,
   SpiritualHabitType,
@@ -54,7 +55,10 @@ export const SpiritualJourneyModule: React.FC = () => {
   const [progTargetDays, setProgTargetDays] = useState('7');
   const [progPendingMedia, setProgPendingMedia] = useState<File | null>(null);
 
-  const [progressView, setProgressView] = useState<'weekly' | 'monthly'>('weekly');
+  const [progressView, setProgressView] = useModuleSubView<'weekly' | 'monthly'>(
+    'journey',
+    'weekly'
+  );
   const [filterHabit, setFilterHabit] = useState<SpiritualHabitType | 'all'>('all');
 
   const [selectedLogIds, setSelectedLogIds] = useState<string[]>([]);

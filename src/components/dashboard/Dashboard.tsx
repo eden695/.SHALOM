@@ -16,7 +16,7 @@ import { useShalomDB } from '../../hooks/useShalomDB';
 import { useLanguage } from '../../contexts/LanguageContext';
 
 interface DashboardProps {
-  onNavigate: (tab: string) => void;
+  onNavigate: (tab: string, subView?: string) => void;
   onOpenNewPrayer: () => void;
   onOpenNewParole: () => void;
   onOpenShareModal: () => void;
@@ -216,7 +216,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         <button
           type="button"
-          onClick={() => onNavigate('prayers')}
+          onClick={() => onNavigate('prayers', 'testimonies')}
           className="text-left p-4 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 hover:border-emerald-500 transition shadow-xs"
         >
           <div className="flex items-center justify-between text-slate-500 mb-2">

@@ -25,6 +25,7 @@ import {
 import { dbService, STORES } from '../../services/db';
 import { useShalomDB } from '../../hooks/useShalomDB';
 import { useLanguage, WORLD_LANGUAGES } from '../../contexts/LanguageContext';
+import { useModuleSubView } from '../../contexts/NavigationContext';
 import {
   hashSecret,
   getSecurityConfig,
@@ -58,16 +59,12 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
 }) => {
   const { userProfile, reloadData } = useShalomDB();
   const { lang, setLang, t, currentLanguageInfo } = useLanguage();
-  const [subTab, setSubTab] = useState<string>(initialSubTab);
+  const [subTab, setSubTab] = useModuleSubView<string>('settings', initialSubTab || 'general');
   const [langSearch, setLangSearch] = useState('');
   const [draftLanguage, setDraftLanguage] = useState<AppLanguage>(
     (userProfile?.language as AppLanguage) || lang
   );
   const [langAppliedNotice, setLangAppliedNotice] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (initialSubTab) setSubTab(initialSubTab);
-  }, [initialSubTab]);
 
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);

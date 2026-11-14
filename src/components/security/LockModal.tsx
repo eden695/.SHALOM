@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useId, useRef } from 'react';
 import { Lock, ShieldAlert, Delete, KeyRound, Eye, EyeOff } from 'lucide-react';
 import { LockMode } from '../../types';
 import { verifySecret } from '../../services/security';
 import { PatternGrid } from './PatternGrid';
+import { useNavigationOptional } from '../../contexts/NavigationContext';
 
 interface LockModalProps {
   isOpen: boolean;
@@ -28,6 +29,22 @@ export const LockModal: React.FC<LockModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(false);
   const [attempts, setAttempts] = useState(0);
+
+  const reactId = useId();
+  const overlayId = `lock-modal-${reactId}`;
+  const nav = useNavigationOptional();
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
+  const registerOverlay = nav?.registerOverlay;
+  const unregisterOverlay = nav?.unregisterOverlay;
+
+  useEffect(() => {
+    if (!isOpen || !onCancel) return;
+    registerOverlay?.(overlayId, () => onCancelRef.current?.(), title);
+    return () => {
+      unregisterOverlay?.(overlayId);
+    };
+  }, [isOpen, onCancel, overlayId, registerOverlay, unregisterOverlay, title]);
 
   if (!isOpen) return null;
 

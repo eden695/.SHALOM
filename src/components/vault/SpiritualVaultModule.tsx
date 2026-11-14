@@ -24,6 +24,7 @@ import {
 import { useShalomDB } from '../../hooks/useShalomDB';
 import { dbService, STORES } from '../../services/db';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useModuleSubView } from '../../contexts/NavigationContext';
 import { VaultDocument } from '../../types';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
@@ -280,7 +281,7 @@ export const SpiritualVaultModule: React.FC = () => {
   const { vaultDocuments, reloadData } = useShalomDB();
   const isEn = lang === 'en';
 
-  const [subTab, setSubTab] = useState<'vault' | 'library'>('vault');
+  const [subTab, setSubTab] = useModuleSubView<'vault' | 'library'>('vault', 'vault');
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
 

@@ -1,5 +1,5 @@
 // Service Worker for SHALOM - Offline Christian Companion (Network-First, safe cache)
-const CACHE_NAME = 'shalom-cache-v7';
+const CACHE_NAME = 'shalom-cache-v11';
 const ASSETS_TO_CACHE = [
   './shalom_logo.jpg',
   './shalom_logo_512x512.png',
@@ -42,6 +42,7 @@ self.addEventListener('fetch', (event) => {
   if (!url.protocol.startsWith('http') || url.origin !== self.location.origin) return;
 
   if (
+    url.pathname.startsWith('/api/') ||
     url.pathname.includes('/@vite') ||
     url.pathname.includes('/@react-refresh') ||
     url.pathname.includes('/src/') ||
@@ -63,8 +64,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const fetchOptions = url.pathname.endsWith('manifest.json')
+    ? { cache: 'no-store' }
+    : {};
+
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, fetchOptions)
       .then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200) {
           const copy = networkResponse.clone();

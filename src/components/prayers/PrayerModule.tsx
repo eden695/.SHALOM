@@ -22,6 +22,7 @@ import {
 import { dbService, STORES } from '../../services/db';
 import { importContactsFromVcfOrCsv } from '../../services/phoneContacts';
 import { useShalomDB } from '../../hooks/useShalomDB';
+import { useModuleSubView } from '../../contexts/NavigationContext';
 import { PrayerItem, TestimonyItem, PrayerCategory, PrayerStatus, Contact } from '../../types';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
@@ -86,7 +87,10 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
 }) => {
   const { userProfile, prayers, testimonies, contacts, reloadData } = useShalomDB();
   const currentUserName = userProfile?.fullName?.trim() || 'Utilisateur';
-  const [activeTab, setActiveTab] = useState<'requests' | 'testimonies'>('requests');
+  const [activeTab, setActiveTab] = useModuleSubView<'requests' | 'testimonies'>(
+    'prayers',
+    'requests'
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');

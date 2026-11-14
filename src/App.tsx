@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useShalomDB } from './hooks/useShalomDB';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { RecordingProvider } from './contexts/RecordingContext';
+import { NavigationProvider, useNavigation } from './contexts/NavigationContext';
 import { Header } from './components/layout/Header';
 import { Sidebar, NAV_ITEMS } from './components/layout/Sidebar';
 import { BottomNav } from './components/layout/BottomNav';
@@ -28,52 +29,52 @@ import {
 } from './services/security';
 import { Contact, SecurityConfig, LockableFeatureId } from './types';
 
-function ShalomAppShell() {
+const LOCKABLE_IDS: LockableFeatureId[] = [
+  'altar',
+  'prayers',
+  'journey',
+  'parole',
+  'studios',
+  'vault',
+  'calendar',
+  'contacts',
+  'messaging',
+  'settings',
+];
+
+interface ShellProps {
+  isDarkMode: boolean;
+  toggleDarkMode: () => void;
+  securityConfig: SecurityConfig;
+  setSecurityConfig: React.Dispatch<React.SetStateAction<SecurityConfig>>;
+  isLaunchLockOpen: boolean;
+  setIsLaunchLockOpen: React.Dispatch<React.SetStateAction<boolean>>;
+}
+
+function ShalomAppShell({
+  isDarkMode,
+  toggleDarkMode,
+  securityConfig,
+  setSecurityConfig,
+  isLaunchLockOpen,
+  setIsLaunchLockOpen,
+}: ShellProps) {
   const { userProfile, loading } = useShalomDB();
-  const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [tabHistory, setTabHistory] = useState<string[]>(['dashboard']);
-  const isPopStateNavRef = useRef(false);
+  const { t, lang } = useLanguage();
+  const {
+    activeTab,
+    canGoBack,
+    navigateTo,
+    goBack,
+    goHome,
+    isExitConfirmOpen,
+    cancelExit,
+    confirmExit,
+  } = useNavigation();
 
-  // Theme Management
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('shalom_theme');
-      if (saved) return saved === 'dark';
-      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    } catch {
-      return false;
-    }
-  });
-
-  useEffect(() => {
-    try {
-      if (isDarkMode) {
-        document.documentElement.classList.add('dark');
-        localStorage.setItem('shalom_theme', 'dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-        localStorage.setItem('shalom_theme', 'light');
-      }
-    } catch {
-      if (isDarkMode) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    }
-  }, [isDarkMode]);
-
-  const toggleDarkMode = () => setIsDarkMode((prev) => !prev);
-
-  // Local Security Lock State
-  const [securityConfig, setSecurityConfig] = useState<SecurityConfig>(() => getSecurityConfig());
-  const [isLaunchLockOpen, setIsLaunchLockOpen] = useState<boolean>(() => {
-    const cfg = getSecurityConfig();
-    return cfg.isEnabled && cfg.lockOnLaunch && !!cfg.secretHash && !isAppSessionUnlocked();
-  });
   const [pendingFeatureUnlock, setPendingFeatureUnlock] = useState<{
     tab: string;
+    subView?: string;
     lockId: LockableFeatureId;
   } | null>(null);
 
@@ -84,83 +85,38 @@ function ShalomAppShell() {
     }
   };
 
-  const handleSelectTab = (tab: string) => {
-    const lockableIds: LockableFeatureId[] = [
-      'altar',
-      'prayers',
-      'journey',
-      'parole',
-      'studios',
-      'vault',
-      'calendar',
-      'contacts',
-      'messaging',
-      'settings',
-    ];
-
+  const handleSelectTab = (tab: string, subView?: string) => {
     const isFeatureProtected =
       securityConfig.isEnabled &&
       !!securityConfig.secretHash &&
-      lockableIds.includes(tab as LockableFeatureId) &&
+      LOCKABLE_IDS.includes(tab as LockableFeatureId) &&
       securityConfig.lockedFeatures.includes(tab as LockableFeatureId) &&
       !isFeatureSessionUnlocked(tab as LockableFeatureId);
 
     if (isFeatureProtected) {
       setPendingFeatureUnlock({
         tab,
+        subView,
         lockId: tab as LockableFeatureId,
       });
       return;
     }
 
-    if (tab === activeTab) return;
-
-    setTabHistory((prev) => {
-      if (tab === 'dashboard') return ['dashboard'];
-      return [...prev, tab];
-    });
-    setActiveTab(tab);
-
-    if (!isPopStateNavRef.current) {
-      try {
-        window.history.pushState({ shalomTab: tab }, '');
-      } catch {
-        // ignore history push errors in restricted contexts
-      }
-    }
+    navigateTo(tab, subView);
   };
 
-  const handleGoBack = useCallback(() => {
-    setTabHistory((prev) => {
-      if (prev.length <= 1) {
-        setActiveTab('dashboard');
-        return ['dashboard'];
-      }
-      const nextStack = prev.slice(0, -1);
-      const previousTab = nextStack[nextStack.length - 1] || 'dashboard';
-      setActiveTab(previousTab);
-      return nextStack;
-    });
-  }, []);
-
-  const handleGoHome = useCallback(() => {
-    setTabHistory(['dashboard']);
-    setActiveTab('dashboard');
-  }, []);
-
+  // Guard if a protected tab was restored from sessionStorage without active feature unlock
   useEffect(() => {
-    const onPopState = () => {
-      if (activeTab !== 'dashboard') {
-        isPopStateNavRef.current = true;
-        handleGoBack();
-        window.setTimeout(() => {
-          isPopStateNavRef.current = false;
-        }, 0);
-      }
-    };
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
-  }, [activeTab, handleGoBack]);
+    if (
+      securityConfig.isEnabled &&
+      !!securityConfig.secretHash &&
+      LOCKABLE_IDS.includes(activeTab as LockableFeatureId) &&
+      securityConfig.lockedFeatures.includes(activeTab as LockableFeatureId) &&
+      !isFeatureSessionUnlocked(activeTab as LockableFeatureId)
+    ) {
+      goHome();
+    }
+  }, [activeTab, securityConfig, goHome]);
 
   const [campaignContacts, setCampaignContacts] = useState<Contact[] | undefined>(undefined);
   const [campaignMessage, setCampaignMessage] = useState<string | undefined>(undefined);
@@ -197,34 +153,36 @@ function ShalomAppShell() {
     ? t(activeNavItem.labelKey, activeNavItem.fallbackLabel)
     : 'SHALOM';
 
+  const isEn = lang === 'en';
+
   return (
     <div className="min-h-screen flex bg-[#f7f8fa] dark:bg-[#060d1d] text-slate-900 dark:text-slate-100 transition-colors">
       <Sidebar
         userName={userProfile?.fullName}
         userAvatarUrl={userProfile?.avatarDataUrl}
         activeTab={activeTab}
-        onSelectTab={handleSelectTab}
+        onSelectTab={(tab) => handleSelectTab(tab)}
         lockedFeatures={securityConfig.isEnabled ? securityConfig.lockedFeatures : []}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
         <Header
           pageTitle={pageTitle}
-          showBackButton={activeTab !== 'dashboard'}
+          showBackButton={canGoBack}
           isDarkMode={isDarkMode}
           onToggleDarkMode={toggleDarkMode}
           isSecurityEnabled={securityConfig.isEnabled}
           isUnlocked={isAppSessionUnlocked() || !isLaunchLockOpen}
           onLockClick={handleLockNow}
-          onGoBack={handleGoBack}
-          onGoHome={handleGoHome}
+          onGoBack={goBack}
+          onGoHome={goHome}
         />
 
         <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 pb-24 lg:pb-10">
           {activeTab === 'dashboard' && (
             <Dashboard
               onNavigate={handleSelectTab}
-              onOpenNewPrayer={() => handleSelectTab('prayers')}
+              onOpenNewPrayer={() => handleSelectTab('prayers', 'requests')}
               onOpenNewParole={() => handleSelectTab('parole')}
               onOpenShareModal={() => handleSelectTab('messaging')}
             />
@@ -268,7 +226,7 @@ function ShalomAppShell() {
               onClose={() => {
                 setCampaignContacts(undefined);
                 setCampaignMessage(undefined);
-                handleSelectTab('dashboard');
+                goBack();
               }}
             />
           )}
@@ -291,7 +249,7 @@ function ShalomAppShell() {
 
       <BottomNav
         activeTab={activeTab}
-        onSelectTab={handleSelectTab}
+        onSelectTab={(tab) => handleSelectTab(tab)}
         lockedFeatures={securityConfig.isEnabled ? securityConfig.lockedFeatures : []}
       />
 
@@ -319,12 +277,49 @@ function ShalomAppShell() {
           onUnlocked={() => {
             unlockFeatureSession(pendingFeatureUnlock.lockId);
             const target = pendingFeatureUnlock.tab;
+            const subView = pendingFeatureUnlock.subView;
             setPendingFeatureUnlock(null);
-            setTabHistory((prev) => [...prev, target]);
-            setActiveTab(target);
+            navigateTo(target, subView);
           }}
           onCancel={() => setPendingFeatureUnlock(null)}
         />
+      )}
+
+      {isExitConfirmOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
+            <div className="space-y-1.5">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                {isEn ? 'Exit SHALOM?' : 'Quitter SHALOM ?'}
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                {isEn
+                  ? 'You are on the home screen. Do you want to leave the application?'
+                  : 'Vous êtes sur l’écran d’accueil. Voulez-vous vraiment quitter l’application ?'}
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={cancelExit}
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+              >
+                {isEn ? 'Stay' : 'Rester'}
+              </button>
+              <button
+                type="button"
+                onClick={confirmExit}
+                className="px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold transition"
+              >
+                {isEn ? 'Exit' : 'Quitter'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -333,10 +328,55 @@ function ShalomAppShell() {
 export default function App() {
   const { userProfile } = useShalomDB();
 
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('shalom_theme');
+      if (saved) return saved === 'dark';
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (isDarkMode) {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('shalom_theme', 'dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('shalom_theme', 'light');
+      }
+    } catch {
+      if (isDarkMode) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    }
+  }, [isDarkMode]);
+
+  const toggleDarkMode = () => setIsDarkMode((prev) => !prev);
+
+  const [securityConfig, setSecurityConfig] = useState<SecurityConfig>(() => getSecurityConfig());
+  const [isLaunchLockOpen, setIsLaunchLockOpen] = useState<boolean>(() => {
+    const cfg = getSecurityConfig();
+    return cfg.isEnabled && cfg.lockOnLaunch && !!cfg.secretHash && !isAppSessionUnlocked();
+  });
+
   return (
     <LanguageProvider initialLanguage={userProfile?.language}>
       <RecordingProvider>
-        <ShalomAppShell />
+        <NavigationProvider isLaunchLocked={isLaunchLockOpen}>
+          <ShalomAppShell
+            isDarkMode={isDarkMode}
+            toggleDarkMode={toggleDarkMode}
+            securityConfig={securityConfig}
+            setSecurityConfig={setSecurityConfig}
+            isLaunchLockOpen={isLaunchLockOpen}
+            setIsLaunchLockOpen={setIsLaunchLockOpen}
+          />
+        </NavigationProvider>
       </RecordingProvider>
     </LanguageProvider>
   );

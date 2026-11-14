@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Home, Flame, HeartHandshake, Mic, Menu, X, Lock } from 'lucide-react';
 import { LockableFeatureId } from '../../types';
 import { NAV_ITEMS } from './Sidebar';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useNavigationOptional } from '../../contexts/NavigationContext';
 
 interface BottomNavProps {
   activeTab: string;
@@ -17,6 +18,17 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 }) => {
   const { t } = useLanguage();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const nav = useNavigationOptional();
+  const registerOverlay = nav?.registerOverlay;
+  const unregisterOverlay = nav?.unregisterOverlay;
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    registerOverlay?.('bottom-nav-drawer', () => setDrawerOpen(false), 'Menu');
+    return () => {
+      unregisterOverlay?.('bottom-nav-drawer');
+    };
+  }, [drawerOpen, registerOverlay, unregisterOverlay]);
 
   const primaryTabs = [
     { id: 'dashboard', label: t('bottom.home'), icon: Home },

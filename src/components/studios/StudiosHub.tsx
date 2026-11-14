@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Palette, Music, Film, Sparkles } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useModuleSubView } from '../../contexts/NavigationContext';
 import { CreativeStudioModule } from './CreativeStudioModule';
 import { AudioStudioModule } from './AudioStudioModule';
 import { VideoStudioModule } from './VideoStudioModule';
@@ -8,7 +9,10 @@ import { VideoStudioModule } from './VideoStudioModule';
 export const StudiosHub: React.FC = () => {
   const { lang } = useLanguage();
   const isEn = lang === 'en';
-  const [activeStudio, setActiveStudio] = useState<'design' | 'audio' | 'video'>('design');
+  const [activeStudio, setActiveStudio] = useModuleSubView<'design' | 'audio' | 'video'>(
+    'studios',
+    'design'
+  );
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">

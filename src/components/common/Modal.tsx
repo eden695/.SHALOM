@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { X } from 'lucide-react';
+import { useNavigationOptional } from '../../contexts/NavigationContext';
 
 interface ModalProps {
   isOpen: boolean;
@@ -18,9 +19,25 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   maxWidth = 'lg',
 }) => {
+  const reactId = useId();
+  const overlayId = `modal-${reactId}`;
+  const nav = useNavigationOptional();
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const registerOverlay = nav?.registerOverlay;
+  const unregisterOverlay = nav?.unregisterOverlay;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    registerOverlay?.(overlayId, () => onCloseRef.current(), title);
+    return () => {
+      unregisterOverlay?.(overlayId);
+    };
+  }, [isOpen, overlayId, registerOverlay, unregisterOverlay, title]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -30,7 +47,7 @@ export const Modal: React.FC<ModalProps> = ({
       document.body.style.overflow = '';
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

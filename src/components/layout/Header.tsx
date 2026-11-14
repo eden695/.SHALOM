@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Sun, Moon, ShieldCheck, Shield, Download, ArrowLeft, Home } from 'lucide-react';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { Modal } from '../common/Modal';
 
 interface HeaderProps {
   pageTitle: string;
@@ -136,27 +137,27 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </header>
 
-      {showIosPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 text-center">
-            <h4 className="text-base font-bold text-slate-900 dark:text-white">
-              Installer SHALOM sur iPhone / iPad
-            </h4>
-            <p className="mt-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed text-left">
-              1. Touchez l’icône <strong>Partager</strong> dans Safari.<br />
-              2. Touchez <strong>Sur l’écran d’accueil</strong>.<br />
-              3. Accédez à SHALOM même hors-ligne.
-            </p>
-            <button
-              type="button"
-              onClick={() => setShowIosPrompt(false)}
-              className="mt-4 w-full rounded-xl bg-blue-700 py-2 text-xs font-semibold text-white hover:bg-blue-800"
-            >
-              Compris
-            </button>
-          </div>
+      <Modal
+        isOpen={showIosPrompt}
+        onClose={() => setShowIosPrompt(false)}
+        title="Installer SHALOM sur iPhone / iPad"
+        maxWidth="sm"
+      >
+        <div className="space-y-4 text-center">
+          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed text-left">
+            1. Touchez l’icône <strong>Partager</strong> dans Safari.<br />
+            2. Touchez <strong>Sur l’écran d’accueil</strong>.<br />
+            3. Accédez à SHALOM même hors-ligne.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowIosPrompt(false)}
+            className="w-full rounded-xl bg-blue-700 py-2 text-xs font-semibold text-white hover:bg-blue-800"
+          >
+            Compris
+          </button>
         </div>
-      )}
+      </Modal>
     </>
   );
 };

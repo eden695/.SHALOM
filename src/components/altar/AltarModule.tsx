@@ -19,6 +19,7 @@ import {
 import { useShalomDB } from '../../hooks/useShalomDB';
 import { dbService, STORES } from '../../services/db';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useModuleSubView } from '../../contexts/NavigationContext';
 import {
   WeeklyAltarDay,
   LifeChangeGoal,
@@ -80,7 +81,10 @@ export const AltarModule: React.FC = () => {
   const dayNames = isEn ? DAY_NAMES_EN : DAY_NAMES_FR;
   const todayDow = new Date().getDay();
 
-  const [subTab, setSubTab] = useState<'weekly' | 'changes' | 'people' | 'commitments'>('weekly');
+  const [subTab, setSubTab] = useModuleSubView<'weekly' | 'changes' | 'people' | 'commitments'>(
+    'altar',
+    'weekly'
+  );
 
   // Single day edit modal
   const [editingDay, setEditingDay] = useState<WeeklyAltarDay | null>(null);
