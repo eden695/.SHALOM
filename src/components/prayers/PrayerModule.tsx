@@ -412,6 +412,7 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
     const mediaType: 'image' | 'video' = file.type.startsWith('video/') ? 'video' : 'image';
     const previewUrl = URL.createObjectURL(file);
     setTestimonyMediaFile({ file, mediaType, previewUrl });
+    e.target.value = '';
   };
 
   const handleSaveTestimony = async (e: React.FormEvent) => {
@@ -592,11 +593,11 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 self-start sm:self-auto">
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 self-start sm:self-auto max-w-full overflow-x-auto no-scrollbar">
           <button
             type="button"
             onClick={() => setActiveTab('requests')}
-            className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition ${
+            className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition whitespace-nowrap shrink-0 ${
               activeTab === 'requests'
                 ? 'bg-white dark:bg-[#0f2b5c] text-blue-700 dark:text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-400'
@@ -607,7 +608,7 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('testimonies')}
-            className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition ${
+            className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition whitespace-nowrap shrink-0 ${
               activeTab === 'testimonies'
                 ? 'bg-white dark:bg-[#0f2b5c] text-blue-700 dark:text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-400'

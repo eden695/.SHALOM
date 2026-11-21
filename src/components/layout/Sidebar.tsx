@@ -148,9 +148,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               key={item.id}
               type="button"
               onClick={() => onSelectTab(item.id)}
+              style={isActive ? { backgroundColor: 'var(--shalom-primary)' } : undefined}
               className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors ${
                 isActive
-                  ? 'bg-[#0b1f42] text-white dark:bg-blue-700 dark:text-white font-semibold shadow-xs'
+                  ? 'text-white font-semibold shadow-xs'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-white'
               }`}
             >

@@ -24,9 +24,12 @@ export interface SecurityConfig {
   autoLockMinutes?: number;
 }
 
+export type ReminderFrequency = 'daily' | 'weekdays' | 'weekends';
+
 export interface ReminderItemConfig {
   enabled: boolean;
   time: string;
+  frequency?: ReminderFrequency;
 }
 
 export interface NotificationSettings {
@@ -152,6 +155,7 @@ export interface Contact {
   lastName: string;
   phone: string;
   email?: string;
+  photoDataUrl?: string;
   category: ContactCategory;
   notes?: string;
   address?: string;
@@ -202,7 +206,7 @@ export interface ShareHistoryItem {
   contactName: string;
   contactPhone: string;
   messageText: string;
-  channel: 'whatsapp' | 'sms';
+  channel: 'whatsapp' | 'sms' | 'gmail';
   status: 'en_attente' | 'ouvert' | 'confirme_envoye' | 'ignore' | 'echec';
   timestamp: string;
   mediaBlobKey?: string;

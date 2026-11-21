@@ -88,14 +88,14 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           onClick={() => setDrawerOpen(false)}
         >
           <div
-            className="w-full bg-white dark:bg-[#0c1631] rounded-t-3xl p-5 pb-20 border-t border-slate-200 dark:border-slate-800 shadow-2xl max-h-[75vh] overflow-y-auto"
+            className="w-full bg-white dark:bg-[#0c1631] rounded-t-3xl p-4 sm:p-5 pb-5 mb-[calc(3.5rem+env(safe-area-inset-bottom,4px))] border-t border-slate-200 dark:border-slate-800 shadow-2xl max-h-[calc(80dvh-3.5rem)] overflow-y-auto overscroll-contain"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-4" />
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3 px-1">
               {t('bottom.menuTitle')}
             </h3>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               {NAV_ITEMS.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
@@ -109,9 +109,10 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                       onSelectTab(item.id);
                       setDrawerOpen(false);
                     }}
-                    className={`p-3 rounded-2xl border text-left flex items-center justify-between gap-2 transition ${
+                    style={isActive ? { backgroundColor: 'var(--shalom-primary)', borderColor: 'var(--shalom-primary)' } : undefined}
+                    className={`min-h-[46px] p-3 rounded-2xl border text-left flex items-center justify-between gap-2 transition ${
                       isActive
-                        ? 'bg-[#0b1f42] text-white border-[#0b1f42] dark:bg-blue-700 dark:border-blue-700'
+                        ? 'text-white shadow-xs'
                         : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200/80 dark:border-slate-800 text-slate-700 dark:text-slate-200'
                     }`}
                   >

@@ -1,13 +1,14 @@
-// Social Sharing Helper for SHALOM (WhatsApp, Facebook, Instagram, X, TikTok & Native Web Share)
+// Social Sharing Helper for SHALOM (WhatsApp, Gmail, Facebook, Instagram, X, TikTok & Native Web Share)
 import { downloadBlobSafe } from '../utils/download';
 
-export type SocialPlatform = 'native' | 'whatsapp' | 'facebook' | 'instagram' | 'x' | 'tiktok';
+export type SocialPlatform = 'native' | 'whatsapp' | 'gmail' | 'facebook' | 'instagram' | 'x' | 'tiktok';
 
 export interface SharePayload {
   title: string;
   text: string;
   url?: string;
   file?: File;
+  recipientEmail?: string;
 }
 
 export async function normalizeMediaToShareFile(
@@ -133,6 +134,25 @@ export async function tryNativeShare(payload: SharePayload): Promise<'shared' | 
   return 'unsupported';
 }
 
+export function buildGmailComposeUrl(subject: string, body: string, to?: string): string {
+  const params = new URLSearchParams();
+  params.set('view', 'cm');
+  params.set('fs', '1');
+  if (to?.trim()) params.set('to', to.trim());
+  if (subject.trim()) params.set('su', subject.trim());
+  if (body.trim()) params.set('body', body.trim());
+  return `https://mail.google.com/mail/?${params.toString()}`;
+}
+
+export function buildMailtoUrl(subject: string, body: string, to?: string): string {
+  const recipient = to?.trim() ? encodeURIComponent(to.trim()) : '';
+  const queryParts: string[] = [];
+  if (subject.trim()) queryParts.push(`subject=${encodeURIComponent(subject.trim())}`);
+  if (body.trim()) queryParts.push(`body=${encodeURIComponent(body.trim())}`);
+  const query = queryParts.length > 0 ? `?${queryParts.join('&')}` : '';
+  return `mailto:${recipient}${query}`;
+}
+
 export function buildPlatformShareUrl(platform: Exclude<SocialPlatform, 'native'>, payload: SharePayload): string {
   const shareUrl = payload.url || (typeof window !== 'undefined' ? window.location.origin : 'https://shalom.app');
   const encodedText = encodeURIComponent(payload.text);
@@ -141,6 +161,8 @@ export function buildPlatformShareUrl(platform: Exclude<SocialPlatform, 'native'
   switch (platform) {
     case 'whatsapp':
       return `https://wa.me/?text=${encodedText}`;
+    case 'gmail':
+      return buildGmailComposeUrl(payload.title || 'Partage SHALOM', payload.text, payload.recipientEmail);
     case 'facebook':
       return `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}&quote=${encodedText}`;
     case 'x':

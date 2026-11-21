@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useCallback,
 } from 'react';
+import { getAppPreferences } from '../services/preferences';
 
 export interface RouteEntry {
   kind: 'route';
@@ -83,12 +84,23 @@ function createRouteEntry(
   };
 }
 
+function getFreshStartupRoutes(): PersistedRoute[] {
+  const startup = getAppPreferences().startupPage;
+  if (!startup || startup === 'dashboard') {
+    return [{ tab: 'dashboard' }];
+  }
+  return [
+    { tab: 'dashboard' },
+    { tab: startup, subView: resolveSubView(startup) },
+  ];
+}
+
 function loadInitialRoutes(): PersistedRoute[] {
   try {
     const raw = sessionStorage.getItem(NAV_STORAGE_KEY);
-    if (!raw) return [{ tab: 'dashboard' }];
+    if (!raw) return getFreshStartupRoutes();
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed) || parsed.length === 0) return [{ tab: 'dashboard' }];
+    if (!Array.isArray(parsed) || parsed.length === 0) return getFreshStartupRoutes();
 
     const cleaned: PersistedRoute[] = [];
     for (const item of parsed) {

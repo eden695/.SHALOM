@@ -28,6 +28,7 @@ import {
   lockAllSessions,
 } from './services/security';
 import { checkDueReminders, DueReminderPayload } from './services/notifications';
+import { applyPreferencesToDOM, getAppPreferences } from './services/preferences';
 import { Contact, SecurityConfig, LockableFeatureId } from './types';
 
 const LOCKABLE_IDS: LockableFeatureId[] = [
@@ -89,10 +90,11 @@ function ShalomAppShell({
 
   const handleLockNow = useCallback(() => {
     lockAllSessions();
-    if (securityConfig.isEnabled && securityConfig.secretHash) {
+    const latestCfg = getSecurityConfig();
+    if (latestCfg.isEnabled && latestCfg.secretHash) {
       setIsLaunchLockOpen(true);
     }
-  }, [securityConfig.isEnabled, securityConfig.secretHash, setIsLaunchLockOpen]);
+  }, [setIsLaunchLockOpen]);
 
   // Automatic inactivity lock monitor
   useEffect(() => {
@@ -119,7 +121,7 @@ function ShalomAppShell({
     window.addEventListener('scroll', touchActivity, { passive: true });
     document.addEventListener('visibilitychange', checkInactivity);
 
-    const intervalId = window.setInterval(checkInactivity, 15000);
+    const intervalId = window.setInterval(checkInactivity, 1000);
 
     return () => {
       window.removeEventListener('pointerdown', touchActivity);
@@ -235,7 +237,7 @@ function ShalomAppShell({
           onToggleDarkMode={toggleDarkMode}
           isSecurityEnabled={securityConfig.isEnabled}
           isUnlocked={isAppSessionUnlocked() || !isLaunchLockOpen}
-          onLockClick={handleLockNow}
+          onLockClick={() => handleLockNow()}
           onGoBack={goBack}
           onGoHome={goHome}
         />
@@ -328,7 +330,7 @@ function ShalomAppShell({
             <SettingsModule
               isDarkMode={isDarkMode}
               onToggleDarkMode={toggleDarkMode}
-              onLockNow={handleLockNow}
+              onLockNow={() => handleLockNow()}
               onSecurityChanged={(cfg) => setSecurityConfig(cfg)}
             />
           )}
@@ -383,6 +385,10 @@ function ShalomAppShell({
 
 export default function App() {
   const { userProfile } = useShalomDB();
+
+  useEffect(() => {
+    applyPreferencesToDOM(getAppPreferences());
+  }, []);
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     try {

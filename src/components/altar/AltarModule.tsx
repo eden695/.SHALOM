@@ -459,7 +459,7 @@ export const AltarModule: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60">
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 max-w-full overflow-x-auto no-scrollbar self-start sm:self-auto">
           {[
             { id: 'weekly', label: isEn ? '7-Day Altar' : 'Semaine (7j)' },
             { id: 'changes', label: isEn ? 'Life Changes' : 'À changer' },
@@ -470,7 +470,7 @@ export const AltarModule: React.FC = () => {
               key={tab.id}
               type="button"
               onClick={() => setSubTab(tab.id as typeof subTab)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition whitespace-nowrap shrink-0 ${
                 subTab === tab.id
                   ? 'bg-white dark:bg-[#0f2b5c] text-blue-700 dark:text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400'

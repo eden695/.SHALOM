@@ -660,7 +660,7 @@ export const ParoleModule: React.FC = () => {
           </div>
 
           <div className="flex flex-col md:flex-row gap-2.5 items-stretch md:items-center justify-between">
-            <div className="flex flex-1 gap-2">
+            <div className="flex flex-col sm:flex-row flex-1 gap-2">
               <div className="relative flex-1">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
@@ -686,7 +686,7 @@ export const ParoleModule: React.FC = () => {
               </select>
             </div>
 
-            <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 self-start sm:self-auto">
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 self-start sm:self-auto max-w-full overflow-x-auto no-scrollbar">
               {[
                 { id: 'all', label: 'Tout' },
                 { id: 'predication', label: 'Prédications' },
@@ -697,7 +697,7 @@ export const ParoleModule: React.FC = () => {
                   key={item.id}
                   type="button"
                   onClick={() => setActiveFilterType(item.id)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition whitespace-nowrap shrink-0 ${
                     activeFilterType === item.id
                       ? 'bg-white dark:bg-[#0f2b5c] text-blue-700 dark:text-blue-200 shadow-xs'
                       : 'text-slate-600 dark:text-slate-400'

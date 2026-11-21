@@ -9,19 +9,74 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
+:root {
+  --shalom-primary: #1d4ed8;
+  --shalom-primary-hover: #1e40af;
+}
+
+html[data-text-scale="small"] {
+  font-size: 14.5px;
+}
+
+html[data-text-scale="normal"],
+html:not([data-text-scale]) {
+  font-size: 16px;
+}
+
+html[data-text-scale="large"] {
+  font-size: 17.5px;
+}
+
+html[data-text-scale="xlarge"] {
+  font-size: 19px;
+}
+
 @layer base {
-  html,
-  body {
+  html {
     -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
-    overscroll-behavior-y: contain;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 
   body {
     @apply antialiased font-sans text-slate-800 bg-[#f8fafc] dark:bg-[#0b1329] dark:text-slate-100 min-h-screen selection:bg-blue-600 selection:text-white;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-overflow-scrolling: touch;
+    overflow-x: clip;
   }
+
+  button,
+  a,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+}
+
+html[data-reading-comfort="true"] body {
+  background-color: #fbf7ef;
+  line-height: 1.65;
+}
+
+html.dark[data-reading-comfort="true"] body {
+  background-color: #101626;
+  color: #e6e1d6;
+}
+
+html[data-reduce-motion="true"] *,
+html[data-reduce-motion="true"] *::before,
+html[data-reduce-motion="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* Custom scrollbars for clean mobile & desktop experience */

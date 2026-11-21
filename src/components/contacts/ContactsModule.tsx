@@ -15,6 +15,8 @@ import {
   Send,
   MapPin,
   Info,
+  Camera,
+  X,
 } from 'lucide-react';
 import { dbService, STORES } from '../../services/db';
 import { importContactsFromVcfOrCsv } from '../../services/phoneContacts';
@@ -22,6 +24,7 @@ import { useShalomDB } from '../../hooks/useShalomDB';
 import { Contact, ContactCategory } from '../../types';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
+import { downloadBlobSafe } from '../../utils/download';
 
 interface ContactsModuleProps {
   onStartCampaignWithContacts?: (contacts: Contact[]) => void;
@@ -41,6 +44,7 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
     lastName: string;
     phone: string;
     email: string;
+    photoDataUrl: string;
     category: ContactCategory;
     notes: string;
     address: string;
@@ -50,6 +54,7 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
     lastName: '',
     phone: '',
     email: '',
+    photoDataUrl: '',
     category: 'frere_soeur',
     notes: '',
     address: '',
@@ -107,6 +112,7 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
       lastName: '',
       phone: '',
       email: '',
+      photoDataUrl: '',
       category: 'frere_soeur',
       notes: '',
       address: '',
@@ -122,12 +128,41 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
       lastName: c.lastName,
       phone: c.phone,
       email: c.email || '',
+      photoDataUrl: c.photoDataUrl || '',
       category: c.category,
       notes: c.notes || '',
       address: c.address || '',
       neighborhood: c.neighborhood || '',
     });
     setIsModalOpen(true);
+  };
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const minSide = Math.min(img.width, img.height);
+        const sx = (img.width - minSide) / 2;
+        const sy = (img.height - minSide) / 2;
+        ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.86);
+        setForm((prev) => ({ ...prev, photoDataUrl: dataUrl }));
+      };
+      if (typeof reader.result === 'string') {
+        img.src = reader.result;
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -140,6 +175,7 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
       lastName: form.lastName.trim(),
       phone: form.phone.trim(),
       email: form.email.trim() || undefined,
+      photoDataUrl: form.photoDataUrl || undefined,
       category: form.category,
       notes: form.notes.trim() || undefined,
       address: form.address.trim() || undefined,
@@ -170,7 +206,7 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
     reloadData();
   };
 
-  const executeExportCSV = () => {
+  const executeExportCSV = async () => {
     const headers = ['Prénom', 'Nom', 'Téléphone', 'Email', 'Relation', 'Quartier', 'Adresse', 'Notes'];
     const rows = contacts.map((c) => [
       `"${c.firstName}"`,
@@ -183,14 +219,12 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
       `"${(c.notes || '').replace(/"/g, '""')}"`,
     ]);
     const csvContent =
-      'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `contacts_shalom_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+    await downloadBlobSafe(
+      blob,
+      `contacts_shalom_${new Date().toISOString().split('T')[0]}.csv`
+    );
     setIsExportConfirmOpen(false);
     setStatusMessage(`${contacts.length} contact(s) exporté(s) au format CSV.`);
   };
@@ -284,7 +318,7 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
 
       {contacts.length > 0 && (
         <div className="p-3.5 rounded-2xl bg-white dark:bg-[#0c1631] border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-          <div className="flex flex-1 gap-2">
+          <div className="flex flex-col sm:flex-row flex-1 gap-2">
             <div className="relative flex-1">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
@@ -389,10 +423,27 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
                   )}
                 </div>
 
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                    {contact.firstName} {contact.lastName}
-                  </h3>
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-full overflow-hidden bg-blue-50 dark:bg-blue-950/60 border border-blue-200/70 dark:border-blue-800/60 text-blue-700 dark:text-blue-300 flex items-center justify-center font-bold text-sm shrink-0">
+                    {contact.photoDataUrl ? (
+                      <img
+                        src={contact.photoDataUrl}
+                        alt={`${contact.firstName} ${contact.lastName}`.trim()}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span>
+                        {(contact.firstName.charAt(0) || '?').toUpperCase()}
+                        {(contact.lastName.charAt(0) || '').toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                      {contact.firstName} {contact.lastName}
+                    </h3>
+                  </div>
+                </div>
                   <div className="text-xs text-slate-600 dark:text-slate-400 space-y-1 mt-1">
                     <div className="flex items-center gap-1.5">
                       <Phone className="w-3.5 h-3.5 text-blue-600" />
@@ -412,7 +463,6 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
                       </p>
                     )}
                   </div>
-                </div>
               </div>
 
               <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
@@ -478,7 +528,51 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
         title={editingContact ? 'Modifier le Contact' : 'Nouveau Contact'}
       >
         <form onSubmit={handleSave} className="space-y-3 text-xs">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="flex items-center gap-4 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800">
+            <div className="w-16 h-16 rounded-full overflow-hidden bg-blue-100 dark:bg-blue-950/60 border-2 border-blue-200 dark:border-blue-800 flex items-center justify-center font-bold text-base text-blue-700 dark:text-blue-300 shrink-0">
+              {form.photoDataUrl ? (
+                <img
+                  src={form.photoDataUrl}
+                  alt="Contact"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span>
+                  {(form.firstName.charAt(0) || 'C').toUpperCase()}
+                  {(form.lastName.charAt(0) || '').toUpperCase()}
+                </span>
+              )}
+            </div>
+            <div className="space-y-1.5 min-w-0">
+              <div className="font-semibold text-slate-800 dark:text-slate-100">
+                Photo du contact (optionnelle)
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="px-3 py-1.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold cursor-pointer inline-flex items-center gap-1.5 transition">
+                  <Camera className="w-3.5 h-3.5" />
+                  <span>{form.photoDataUrl ? 'Changer la photo' : 'Ajouter une image'}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePhotoChange}
+                    className="hidden"
+                  />
+                </label>
+                {form.photoDataUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setForm((prev) => ({ ...prev, photoDataUrl: '' }))}
+                    className="px-2.5 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold inline-flex items-center gap-1"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>Retirer</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold mb-1">Prénom *</label>
               <input
@@ -500,7 +594,7 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold mb-1">Téléphone (avec indicatif) *</label>
               <input
@@ -528,7 +622,7 @@ export const ContactsModule: React.FC<ContactsModuleProps> = ({ onStartCampaignW
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold mb-1">Quartier</label>
               <input

@@ -1,14 +1,20 @@
-import { NotificationSettings } from '../types';
+import { NotificationSettings, ReminderFrequency } from '../types';
 
 const NOTIFICATION_STORAGE_KEY = 'shalom_notification_settings_v1';
 const NOTIFICATION_FIRED_KEY = 'shalom_notification_fired_v1';
 const USAGE_TIPS_STORAGE_KEY = 'shalom_usage_tips_v1';
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
-  dailyPrayer: { enabled: false, time: '06:30' },
-  meditation: { enabled: false, time: '12:30' },
-  bibleReading: { enabled: false, time: '20:00' },
+  dailyPrayer: { enabled: false, time: '06:30', frequency: 'daily' },
+  meditation: { enabled: false, time: '12:30', frequency: 'daily' },
+  bibleReading: { enabled: false, time: '20:00', frequency: 'daily' },
 };
+
+const VALID_FREQS = new Set<ReminderFrequency>(['daily', 'weekdays', 'weekends']);
+
+function sanitizeFrequency(freq?: ReminderFrequency): ReminderFrequency {
+  return freq && VALID_FREQS.has(freq) ? freq : 'daily';
+}
 
 export function getNotificationSettings(): NotificationSettings {
   try {
@@ -19,14 +25,17 @@ export function getNotificationSettings(): NotificationSettings {
       dailyPrayer: {
         enabled: Boolean(parsed.dailyPrayer?.enabled),
         time: parsed.dailyPrayer?.time || '06:30',
+        frequency: sanitizeFrequency(parsed.dailyPrayer?.frequency),
       },
       meditation: {
         enabled: Boolean(parsed.meditation?.enabled),
         time: parsed.meditation?.time || '12:30',
+        frequency: sanitizeFrequency(parsed.meditation?.frequency),
       },
       bibleReading: {
         enabled: Boolean(parsed.bibleReading?.enabled),
         time: parsed.bibleReading?.time || '20:00',
+        frequency: sanitizeFrequency(parsed.bibleReading?.frequency),
       },
     };
   } catch {
@@ -103,10 +112,18 @@ export interface DueReminderPayload {
   body: string;
 }
 
+function isFrequencyDueToday(freq: ReminderFrequency | undefined, dayOfWeek: number): boolean {
+  if (!freq || freq === 'daily') return true;
+  if (freq === 'weekdays') return dayOfWeek >= 1 && dayOfWeek <= 5;
+  if (freq === 'weekends') return dayOfWeek === 0 || dayOfWeek === 6;
+  return true;
+}
+
 export function checkDueReminders(isEn = false): DueReminderPayload | null {
   const settings = getNotificationSettings();
   const now = new Date();
   const today = now.toISOString().split('T')[0];
+  const dayOfWeek = now.getDay();
   const currentHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(
     now.getMinutes()
   ).padStart(2, '0')}`;
@@ -123,6 +140,7 @@ export function checkDueReminders(isEn = false): DueReminderPayload | null {
     key: 'dailyPrayer' | 'meditation' | 'bibleReading';
     enabled: boolean;
     time: string;
+    frequency?: ReminderFrequency;
     title: string;
     body: string;
   }> = [
@@ -130,6 +148,7 @@ export function checkDueReminders(isEn = false): DueReminderPayload | null {
       key: 'dailyPrayer',
       enabled: settings.dailyPrayer.enabled,
       time: settings.dailyPrayer.time,
+      frequency: settings.dailyPrayer.frequency,
       title: isEn ? 'SHALOM · Daily Prayer' : 'SHALOM · Rappel quotidien de prière',
       body: isEn
         ? 'Take a peaceful moment to bring your prayers before God.'
@@ -139,6 +158,7 @@ export function checkDueReminders(isEn = false): DueReminderPayload | null {
       key: 'meditation',
       enabled: settings.meditation.enabled,
       time: settings.meditation.time,
+      frequency: settings.meditation.frequency,
       title: isEn ? 'SHALOM · Meditation Time' : 'SHALOM · Rappel de méditation',
       body: isEn
         ? 'Pause and meditate on God’s Word in peace.'
@@ -148,6 +168,7 @@ export function checkDueReminders(isEn = false): DueReminderPayload | null {
       key: 'bibleReading',
       enabled: settings.bibleReading.enabled,
       time: settings.bibleReading.time,
+      frequency: settings.bibleReading.frequency,
       title: isEn ? 'SHALOM · Bible Reading' : 'SHALOM · Rappel de lecture biblique',
       body: isEn
         ? 'It is time for your daily Bible reading.'
@@ -157,6 +178,7 @@ export function checkDueReminders(isEn = false): DueReminderPayload | null {
 
   for (const item of entries) {
     if (!item.enabled || !item.time) continue;
+    if (!isFrequencyDueToday(item.frequency, dayOfWeek)) continue;
     if (firedMap[item.key] === today) continue;
     if (currentHHMM === item.time) {
       firedMap[item.key] = today;

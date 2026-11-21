@@ -16,6 +16,7 @@ import {
   Trash2,
   History,
   Share2,
+  Mail,
 } from 'lucide-react';
 import { dbService, STORES } from '../../services/db';
 import { importContactsFromVcfOrCsv } from '../../services/phoneContacts';
@@ -24,7 +25,14 @@ import { Contact, MessageTemplate, ShareHistoryItem } from '../../types';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { MediaPickerBox, persistOptionalMedia } from '../common/MediaAttachment';
 import { SocialShareModal } from '../common/SocialShareModal';
-import { SharePayload, tryNativeShare, normalizeMediaToShareFile } from '../../services/socialShare';
+import {
+  SharePayload,
+  tryNativeShare,
+  normalizeMediaToShareFile,
+  buildGmailComposeUrl,
+  buildMailtoUrl,
+} from '../../services/socialShare';
+import { getAppPreferences } from '../../services/preferences';
 
 interface MessagingModuleProps {
   initialContacts?: Contact[];
@@ -60,7 +68,13 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
   const [isBulkDeleteHistoryOpen, setIsBulkDeleteHistoryOpen] = useState(false);
 
   // Optional country code override when a contact has a local number starting with 0 without '+'
-  const [countryPrefixInput, setCountryPrefixInput] = useState('');
+  const [countryPrefixInput, setCountryPrefixInput] = useState(
+    () => getAppPreferences().defaultCountryPrefix || ''
+  );
+  // Optional Gmail recipient override when sending by Gmail
+  const [gmailManualRecipient, setGmailManualRecipient] = useState(
+    () => getAppPreferences().gmailDefaultRecipient || ''
+  );
 
   // Optional media attachment on Nouveau partage
   const [pendingMediaFile, setPendingMediaFile] = useState<File | null>(null);
@@ -88,7 +102,7 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
 
   const targetContacts = allAvailableContacts.filter((c) => selectedIds.includes(c.id));
 
-  const [channel, setChannel] = useState<'whatsapp' | 'sms'>('whatsapp');
+  const [channel, setChannel] = useState<'whatsapp' | 'sms' | 'gmail'>('whatsapp');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(
     initialMessage ? '' : messageTemplates[0]?.id || ''
   );
@@ -288,10 +302,27 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
     setCampaignResults([]);
   };
 
-  const buildExternalAppUrl = (chooseContactInsideWhatsApp = false) => {
+  const effectiveGmailRecipient =
+    (activeContact?.email || '').trim() || gmailManualRecipient.trim();
+
+  const buildGmailSubject = () => {
+    const prefs = getAppPreferences();
+    const base = themeSubject.trim() || 'Partage SHALOM';
+    return prefs.gmailSubjectPrefix ? `${prefs.gmailSubjectPrefix.trim()} ${base}` : base;
+  };
+
+  const buildExternalAppUrl = (chooseContactInsideWhatsApp = false, useMailtoForGmail = false) => {
     if (!activeContact) return '#';
     const encodedText = encodeURIComponent(currentPreviewMessage);
     const parsed = normalizeForWhatsapp(activeContact.phone, countryPrefixInput);
+
+    if (channel === 'gmail') {
+      const subject = buildGmailSubject();
+      const recipient = effectiveGmailRecipient || undefined;
+      return useMailtoForGmail
+        ? buildMailtoUrl(subject, currentPreviewMessage, recipient)
+        : buildGmailComposeUrl(subject, currentPreviewMessage, recipient);
+    }
 
     if (channel === 'whatsapp') {
       if (chooseContactInsideWhatsApp || parsed.needsCountryCode || !parsed.waNumber) {
@@ -301,6 +332,16 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
     }
     const smsPhone = parsed.e164 || activeContact.phone.replace(/[^0-9+]/g, '');
     return `sms:${smsPhone}?body=${encodedText}`;
+  };
+
+  const handleSaveEmailToContact = async () => {
+    if (!activeContact) return;
+    const cleanEmail = gmailManualRecipient.trim();
+    if (!cleanEmail) return;
+    const updatedContact: Contact = { ...activeContact, email: cleanEmail };
+    await dbService.put(STORES.CONTACTS, updatedContact);
+    setExtraRecipients((prev) => prev.map((c) => (c.id === updatedContact.id ? updatedContact : c)));
+    reloadData();
   };
 
   const handleNativeShareWithMediaForContact = async () => {
@@ -402,19 +443,19 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
         <div>
           <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2 font-display">
             <MessageSquare className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-            <span>Partage WhatsApp & Réseaux</span>
+            <span>Partage WhatsApp, Gmail & Réseaux</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Composez un message avec image ou vidéo et partagez sur WhatsApp, SMS ou réseaux sociaux.
+            Composez un message avec image ou vidéo et partagez sur WhatsApp, Gmail, SMS ou réseaux sociaux.
           </p>
         </div>
 
         {!campaignStarted && (
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 self-start sm:self-auto">
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 self-start sm:self-auto max-w-full overflow-x-auto no-scrollbar">
             <button
               type="button"
               onClick={() => setActiveSubTab('compose')}
-              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition ${
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition whitespace-nowrap shrink-0 ${
                 activeSubTab === 'compose'
                   ? 'bg-white dark:bg-[#0f2b5c] text-blue-700 dark:text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400'
@@ -425,7 +466,7 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
             <button
               type="button"
               onClick={() => setActiveSubTab('history')}
-              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition ${
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition whitespace-nowrap shrink-0 ${
                 activeSubTab === 'history'
                   ? 'bg-white dark:bg-[#0f2b5c] text-blue-700 dark:text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400'
@@ -550,7 +591,7 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
                 1. Canal d’envoi
               </label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <button
                   type="button"
                   onClick={() => setChannel('whatsapp')}
@@ -563,9 +604,27 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
                   <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
                     WA
                   </div>
-                  <div className="text-left">
+                  <div className="text-left min-w-0">
                     <span className="text-xs block font-bold">WhatsApp</span>
                     <span className="text-[10px] text-slate-500">Texte et média</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setChannel('gmail')}
+                  className={`p-3 rounded-xl border flex items-center gap-3 transition ${
+                    channel === 'gmail'
+                      ? 'border-rose-500 bg-rose-50/70 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 font-bold ring-2 ring-rose-500/20'
+                      : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-full bg-rose-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <div className="text-left min-w-0">
+                    <span className="text-xs block font-bold">Gmail</span>
+                    <span className="text-[10px] text-slate-500">Composer un e-mail</span>
                   </div>
                 </button>
 
@@ -581,9 +640,9 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
                   <div className="w-8 h-8 rounded-full bg-blue-700 text-white flex items-center justify-center font-bold text-xs shrink-0">
                     SMS
                   </div>
-                  <div className="text-left">
+                  <div className="text-left min-w-0">
                     <span className="text-xs block font-bold">SMS Natif</span>
-                    <span className="text-[10px] text-slate-500">Messagerie du téléphone</span>
+                    <span className="text-[10px] text-slate-500">Messagerie mobile</span>
                   </div>
                 </button>
               </div>
@@ -642,8 +701,8 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
                 onClick={handleOpenSocialShareDirect}
                 className="w-full py-2.5 px-4 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold flex items-center justify-center gap-2 transition shadow-xs"
               >
-                <Share2 className="w-4 h-4" />
-                <span>Partager sur WhatsApp, Facebook, Instagram, X ou TikTok</span>
+                <Share2 className="w-4 h-4 shrink-0" />
+                <span>Partager sur WhatsApp, Gmail, Facebook, Instagram, X ou TikTok</span>
               </button>
             </div>
           </div>
@@ -655,11 +714,11 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
               </label>
 
               <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setShowQuickAdd((prev) => !prev)}
-                    className="px-2.5 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-[11px] font-bold flex items-center justify-center gap-1.5"
+                    className="px-2.5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-[11px] font-bold flex items-center justify-center gap-1.5"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Saisir un numéro</span>
@@ -668,7 +727,7 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
                   <button
                     type="button"
                     onClick={() => vcfInputRef.current?.click()}
-                    className="px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-semibold flex items-center justify-center gap-1.5"
+                    className="px-2.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-semibold flex items-center justify-center gap-1.5"
                   >
                     <Upload className="w-3.5 h-3.5 text-blue-600" />
                     <span>Importer .vcf</span>
@@ -765,6 +824,13 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
                           <CheckSquare className="w-4 h-4 text-emerald-600 shrink-0" />
                         ) : (
                           <Square className="w-4 h-4 text-slate-400 shrink-0" />
+                        )}
+                        {c.photoDataUrl && (
+                          <img
+                            src={c.photoDataUrl}
+                            alt={`${c.firstName} ${c.lastName}`.trim()}
+                            className="w-7 h-7 rounded-full object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                          />
                         )}
                         <div className="min-w-0">
                           <span className="font-bold text-slate-900 dark:text-white block truncate">
@@ -878,10 +944,10 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
 
             <div className="text-right">
               <span className="text-xs font-mono font-bold text-slate-500">
-                {activeContact.phone}
+                {channel === 'gmail' ? effectiveGmailRecipient || activeContact.phone : activeContact.phone}
               </span>
               <span className="text-[10px] block text-slate-400">
-                {channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}
+                {channel === 'whatsapp' ? 'WhatsApp' : channel === 'gmail' ? 'Gmail' : 'SMS'}
               </span>
             </div>
           </div>
@@ -889,6 +955,39 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
           <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
             {currentPreviewMessage}
           </div>
+
+          {channel === 'gmail' && !waitingConfirmation && (
+            <div className="p-3.5 rounded-2xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 space-y-2 text-xs">
+              <p className="font-semibold text-rose-900 dark:text-rose-200">
+                {activeContact.email
+                  ? `Adresse Gmail / Email du contact : ${activeContact.email}`
+                  : `Aucune adresse e-mail enregistrée pour ${activeContact.firstName}. Vous pouvez la saisir ici ou choisir le destinataire dans Gmail :`}
+              </p>
+              {!activeContact.email && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="email"
+                    placeholder="destinataire@gmail.com (optionnel)"
+                    value={gmailManualRecipient}
+                    onChange={(e) => setGmailManualRecipient(e.target.value)}
+                    className="flex-1 min-w-[180px] px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800"
+                  />
+                  {gmailManualRecipient.trim().includes('@') && (
+                    <button
+                      type="button"
+                      onClick={handleSaveEmailToContact}
+                      className="px-3 py-1.5 rounded-lg bg-rose-600 text-white font-bold"
+                    >
+                      Enregistrer sur la fiche
+                    </button>
+                  )}
+                </div>
+              )}
+              <p className="text-[11px] text-rose-800/80 dark:text-rose-300/80">
+                L’envoi final de l’e-mail est confirmé directement dans votre application ou fenêtre Gmail.
+              </p>
+            </div>
+          )}
 
           {channel === 'whatsapp' && activePhoneCheck?.needsCountryCode && !waitingConfirmation && (
             <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 space-y-2 text-xs">
@@ -934,7 +1033,11 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setWaitingConfirmation(true)}
-                className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-sm transition"
+                className={`w-full py-3.5 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2 shadow-sm transition ${
+                  channel === 'gmail'
+                    ? 'bg-rose-600 hover:bg-rose-700'
+                    : 'bg-emerald-600 hover:bg-emerald-500'
+                }`}
               >
                 <ExternalLink className="w-4 h-4" />
                 <span>
@@ -942,9 +1045,22 @@ export const MessagingModule: React.FC<MessagingModuleProps> = ({
                     ? activePhoneCheck?.needsCountryCode
                       ? 'Ouvrir WhatsApp (sélectionner dans WhatsApp)'
                       : 'Ouvrir WhatsApp'
+                    : channel === 'gmail'
+                    ? 'Ouvrir Gmail (Web / Composer)'
                     : 'Ouvrir SMS'}
                 </span>
               </a>
+
+              {channel === 'gmail' && (
+                <a
+                  href={buildExternalAppUrl(false, true)}
+                  onClick={() => setWaitingConfirmation(true)}
+                  className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs flex items-center justify-center gap-1.5 transition"
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  <span>Ouvrir l’application Gmail / Email du téléphone</span>
+                </a>
+              )}
 
               {channel === 'whatsapp' && !activePhoneCheck?.needsCountryCode && (
                 <a
