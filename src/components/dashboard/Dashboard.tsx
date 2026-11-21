@@ -9,7 +9,6 @@ import {
   Clock,
   Flame,
   TrendingUp,
-  Sparkles,
   Vault,
   Lightbulb,
 } from 'lucide-react';
@@ -292,10 +291,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
             icon: TrendingUp,
           },
           {
-            id: 'studios',
-            title: t('nav.studios'),
-            sub: isEn ? 'Design, Audio & Video' : 'Visuel, Audio & Vidéo',
-            icon: Sparkles,
+            id: 'calendar',
+            title: t('nav.calendar'),
+            sub: isEn ? 'Schedule & moments' : 'Agenda & rendez-vous',
+            icon: Calendar,
           },
           {
             id: 'vault',
@@ -453,8 +452,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {isEn ? 'SHALOM Usage Tip' : 'Conseil d’utilisation'}
             </span>
             {isEn
-              ? 'All your prayers, audio/video words, books, and creations stay stored 100% locally on your device. You can back them up or configure daily prayer reminders in Settings.'
-              : 'Toutes vos prières, paroles audio/vidéo, livres et créations restent enregistrés sur votre appareil même hors connexion. Activez vos rappels quotidiens ou exportez une sauvegarde JSON depuis les Paramètres.'}
+              ? 'All your prayers, audio/video words, books, and notes stay stored 100% locally on your device. You can back them up or configure daily prayer reminders in Settings.'
+              : 'Toutes vos prières, paroles audio/vidéo, livres et notes restent enregistrés sur votre appareil même hors connexion. Activez vos rappels quotidiens ou exportez une sauvegarde JSON depuis les Paramètres.'}
           </div>
         </div>
       )}

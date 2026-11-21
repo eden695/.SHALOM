@@ -1,19 +1,30 @@
-// Service Worker for SHALOM - Offline Christian Companion (Network-First, safe cache)
-const CACHE_NAME = 'shalom-cache-v11';
+// Service Worker for SHALOM - Full Offline Support (CacheFirst hashed assets, NetworkFirst HTML)
+const CACHE_NAME = 'shalom-cache-v12';
 const ASSETS_TO_CACHE = [
+  './',
+  './index.html',
+  './manifest.json',
   './shalom_logo.jpg',
   './shalom_logo_512x512.png',
   './shalom_logo_512x512.jpg',
   './icon.png',
-  './manifest.json',
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE).catch((err) => {
-        console.warn('Pre-cache skipped:', err);
-      });
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await Promise.allSettled(
+        ASSETS_TO_CACHE.map(async (assetUrl) => {
+          try {
+            const response = await fetch(assetUrl, { cache: 'reload' });
+            if (response && response.ok) {
+              await cache.put(assetUrl, response);
+            }
+          } catch (err) {
+            console.warn('Pre-cache skipped for:', assetUrl, err);
+          }
+        })
+      );
     })
   );
   self.skipWaiting();
@@ -24,7 +35,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) =>
       Promise.all(
         cacheNames.map((name) => {
-          if (name !== CACHE_NAME) {
+          if (name !== CACHE_NAME && name.startsWith('shalom-cache-')) {
             return caches.delete(name);
           }
           return Promise.resolve(false);
@@ -33,6 +44,12 @@ self.addEventListener('activate', (event) => {
     )
   );
   self.clients.claim();
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {
@@ -51,14 +68,46 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Always let navigation / HTML fetch live from network first, only fallback to cache when offline
+  // Navigation / HTML: Network-first with offline cache fallback
   if (event.request.mode === 'navigate' || url.pathname.endsWith('.html')) {
     event.respondWith(
-      fetch(event.request, { cache: 'no-store' }).catch(async () => {
-        const cached = await caches.match(event.request);
-        if (cached) return cached;
-        const fallback = await caches.match('./index.html');
-        return fallback || Response.error();
+      fetch(event.request, { cache: 'no-store' })
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, copy);
+              cache.put('./index.html', networkResponse.clone());
+            });
+          }
+          return networkResponse;
+        })
+        .catch(async () => {
+          const cached = await caches.match(event.request, { ignoreSearch: true });
+          if (cached) return cached;
+          const fallbackIndex = await caches.match('./index.html');
+          if (fallbackIndex) return fallbackIndex;
+          const fallbackRoot = await caches.match('./');
+          return fallbackRoot || Response.error();
+        })
+    );
+    return;
+  }
+
+  // Hashed Vite assets (JS, CSS, WOFF2 fonts): CacheFirst for instant offline startup
+  if (url.pathname.includes('/assets/')) {
+    event.respondWith(
+      caches.match(event.request).then((cachedResponse) => {
+        if (cachedResponse) return cachedResponse;
+        return fetch(event.request)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              const copy = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+            }
+            return networkResponse;
+          })
+          .catch(() => Response.error());
       })
     );
     return;
@@ -78,7 +127,7 @@ self.addEventListener('fetch', (event) => {
         return networkResponse;
       })
       .catch(async () => {
-        const cached = await caches.match(event.request);
+        const cached = await caches.match(event.request, { ignoreSearch: true });
         return cached || Response.error();
       })
   );

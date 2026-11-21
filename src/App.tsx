@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Bell, X } from 'lucide-react';
+import { Bell, WifiOff, X } from 'lucide-react';
 import { useShalomDB } from './hooks/useShalomDB';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { RecordingProvider } from './contexts/RecordingContext';
@@ -13,7 +13,6 @@ import { AltarModule } from './components/altar/AltarModule';
 import { PrayerModule } from './components/prayers/PrayerModule';
 import { SpiritualJourneyModule } from './components/journey/SpiritualJourneyModule';
 import { ParoleModule } from './components/parole/ParoleModule';
-import { StudiosHub } from './components/studios/StudiosHub';
 import { SpiritualVaultModule } from './components/vault/SpiritualVaultModule';
 import { UnifiedCalendarModule } from './components/calendar/UnifiedCalendarModule';
 import { ContactsModule } from './components/contacts/ContactsModule';
@@ -36,7 +35,6 @@ const LOCKABLE_IDS: LockableFeatureId[] = [
   'prayers',
   'journey',
   'parole',
-  'studios',
   'vault',
   'calendar',
   'contacts',
@@ -73,7 +71,21 @@ function ShalomAppShell({
   } | null>(null);
 
   const [activeReminderBanner, setActiveReminderBanner] = useState<DueReminderPayload | null>(null);
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
   const lastActivityRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
 
   const handleLockNow = useCallback(() => {
     lockAllSessions();
@@ -228,6 +240,17 @@ function ShalomAppShell({
           onGoHome={goHome}
         />
 
+        {!isOnline && (
+          <div className="bg-amber-50 dark:bg-amber-950/50 border-b border-amber-200 dark:border-amber-900/60 px-4 py-1.5 text-center text-xs font-medium text-amber-900 dark:text-amber-200 flex items-center justify-center gap-2">
+            <WifiOff className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              {isEn
+                ? 'Offline mode active — Your data and tools remain fully usable locally.'
+                : 'Mode hors ligne actif — Vos données restent pleinement utilisables localement.'}
+            </span>
+          </div>
+        )}
+
         {activeReminderBanner && (
           <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 pt-3">
             <div className="p-3.5 rounded-2xl bg-blue-700 text-white shadow-md flex items-center justify-between gap-3">
@@ -280,8 +303,6 @@ function ShalomAppShell({
           {activeTab === 'journey' && <SpiritualJourneyModule />}
 
           {activeTab === 'parole' && <ParoleModule />}
-
-          {activeTab === 'studios' && <StudiosHub />}
 
           {activeTab === 'vault' && <SpiritualVaultModule />}
 

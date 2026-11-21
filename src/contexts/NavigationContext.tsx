@@ -33,7 +33,6 @@ export const DEFAULT_SUB_VIEWS: Record<string, string | undefined> = {
   altar: 'weekly',
   prayers: 'requests',
   journey: 'weekly',
-  studios: 'design',
   vault: 'vault',
   settings: 'general',
 };

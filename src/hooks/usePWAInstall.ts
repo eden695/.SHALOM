@@ -12,14 +12,19 @@ export function usePWAInstall() {
   const [isIOS, setIsIOS] = useState(false);
 
   useEffect(() => {
-    // Detect standalone mode (already installed or running in WebView / APK)
+    // Detect standalone mode (already installed or running in Android WebView / Website 2 APK Builder)
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    const isAndroidWebView =
+      window.location.protocol === 'file:' ||
+      /; wv\)/.test(userAgent) ||
+      (typeof window.navigator !== 'undefined' && /android/.test(userAgent) && /\bwv\b/.test(userAgent));
     const isStandalone =
+      isAndroidWebView ||
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as unknown as { standalone?: boolean }).standalone === true;
     setIsInstalled(isStandalone);
 
     // Detect iOS devices
-    const userAgent = window.navigator.userAgent.toLowerCase();
     const isIOSDevice = /iphone|ipad|ipod/.test(userAgent);
     setIsIOS(isIOSDevice);
 
@@ -36,8 +41,11 @@ export function usePWAInstall() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
-    // Register service worker in production, unregister stale workers in development
-    if ('serviceWorker' in navigator) {
+    // Register service worker only on HTTP/HTTPS origins (file:// in Website 2 APK Builder works natively from local assets)
+    const isHttpOrigin =
+      window.location.protocol === 'https:' || window.location.protocol === 'http:';
+
+    if ('serviceWorker' in navigator && isHttpOrigin) {
       if (import.meta.env.PROD) {
         const expectedSwUrl = new URL('./sw.js', window.location.href).href;
         navigator.serviceWorker
@@ -56,8 +64,8 @@ export function usePWAInstall() {
         const onControllerChange = () => {
           if (!hadController) return;
           try {
-            if (sessionStorage.getItem('shalom_sw_reloaded_v11')) return;
-            sessionStorage.setItem('shalom_sw_reloaded_v11', '1');
+            if (sessionStorage.getItem('shalom_sw_reloaded_v12')) return;
+            sessionStorage.setItem('shalom_sw_reloaded_v12', '1');
           } catch {
             // ignore storage restriction
           }

@@ -10,7 +10,6 @@ import {
   MessageTemplate,
   UserProfile,
   VaultDocument,
-  CreativeDesignItem,
   WeeklyAltarDay,
   LifeChangeGoal,
   IntercessionPerson,
@@ -21,7 +20,7 @@ import {
 } from '../types';
 
 const DB_NAME = 'shalom_db';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export const STORES = {
   PROFILES: 'profiles',
@@ -42,7 +41,6 @@ export const STORES = {
   PERSONAL_PROGRAMS: 'personal_programs',
   VAULT_DOCUMENTS: 'vault_documents',
   BIBLE_STUDIES: 'bible_studies',
-  CREATIONS: 'creations',
 } as const;
 
 export type StoreName = (typeof STORES)[keyof typeof STORES];
@@ -280,7 +278,6 @@ class ShalomDB {
       testimonies,
       calendarItems,
       vaultDocs,
-      creations,
       weeklyDays,
       lifeGoals,
       intercessionPeople,
@@ -295,7 +292,6 @@ class ShalomDB {
       this.getAll<TestimonyItem>(STORES.TESTIMONIES),
       this.getAll<CalendarActivity>(STORES.CALENDAR_ACTIVITIES),
       this.getAll<VaultDocument>(STORES.VAULT_DOCUMENTS),
-      this.getAll<CreativeDesignItem>(STORES.CREATIONS),
       this.getAll<WeeklyAltarDay>(STORES.WEEKLY_ALTAR),
       this.getAll<LifeChangeGoal>(STORES.LIFE_GOALS),
       this.getAll<IntercessionPerson>(STORES.INTERCESSION_PEOPLE),
@@ -321,9 +317,6 @@ class ShalomDB {
     });
     vaultDocs.forEach((v) => {
       if (v.blobKey) activeKeys.add(v.blobKey);
-    });
-    creations.forEach((cr) => {
-      if (cr.mediaBlobKey) activeKeys.add(cr.mediaBlobKey);
     });
     weeklyDays.forEach((d) => {
       if (d.mediaBlobKey) activeKeys.add(d.mediaBlobKey);

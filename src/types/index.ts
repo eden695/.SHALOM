@@ -9,7 +9,6 @@ export type LockableFeatureId =
   | 'prayers'
   | 'journey'
   | 'parole'
-  | 'studios'
   | 'vault'
   | 'calendar'
   | 'contacts'
@@ -364,13 +363,3 @@ export interface BibleStudySession {
   updatedAt: string;
 }
 
-// --- Studio de Création Chrétienne ---
-
-export interface CreativeDesignItem {
-  id: string;
-  title: string;
-  templateType: 'verset' | 'voeux' | 'invitation' | 'encouragement';
-  mediaBlobKey: string;
-  mimeType: string;
-  createdAt: string;
-}

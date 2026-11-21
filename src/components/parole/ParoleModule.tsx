@@ -34,6 +34,7 @@ import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { SocialShareModal } from '../common/SocialShareModal';
 import { SharePayload, normalizeMediaToShareFile } from '../../services/socialShare';
+import { downloadBlobSafe } from '../../utils/download';
 
 export const ParoleModule: React.FC = () => {
   const { recordings, reloadData } = useShalomDB();
@@ -323,6 +324,7 @@ export const ParoleModule: React.FC = () => {
         previewUrl,
       });
     };
+    e.target.value = '';
   };
 
   const handleCloseOrMinimizeModal = () => {
@@ -485,15 +487,44 @@ export const ParoleModule: React.FC = () => {
     });
   };
 
-  const handleDownloadParole = () => {
-    if (!playingBlobUrl || !playingParole) return;
-    const ext = playingParole.mimeType.includes('mp4') ? 'mp4' : 'webm';
-    const a = document.createElement('a');
-    a.href = playingBlobUrl;
-    a.download = `${playingParole.title.replace(/[^a-z0-9]/gi, '_')}.${ext}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  const handleDownloadParole = async () => {
+    if (!playingParole) return;
+    const ext = playingParole.mimeType.includes('mp4')
+      ? 'mp4'
+      : playingParole.mimeType.includes('mpeg')
+      ? 'mp3'
+      : playingParole.mimeType.includes('wav')
+      ? 'wav'
+      : 'webm';
+    const fileName = `${playingParole.title.replace(/[^a-z0-9]/gi, '_')}.${ext}`;
+    if (playingParole.blobKey) {
+      const blob = await dbService.getMediaBlob(playingParole.blobKey);
+      if (blob) {
+        await downloadBlobSafe(blob, fileName);
+        return;
+      }
+    }
+    if (playingBlobUrl) {
+      const res = await fetch(playingBlobUrl);
+      const blob = await res.blob();
+      await downloadBlobSafe(blob, fileName);
+    }
+  };
+
+  const handleDownloadCapturedPhoto = async (photoIdx: number, fallbackUrl: string) => {
+    if (!playingParole) return;
+    const fileName = `${playingParole.title.replace(/[^a-z0-9]/gi, '_')}_photo_${photoIdx + 1}.jpg`;
+    const pKey = playingParole.photoBlobKeys?.[photoIdx];
+    if (pKey) {
+      const blob = await dbService.getMediaBlob(pKey);
+      if (blob) {
+        await downloadBlobSafe(blob, fileName);
+        return;
+      }
+    }
+    const res = await fetch(fallbackUrl);
+    const blob = await res.blob();
+    await downloadBlobSafe(blob, fileName);
   };
 
   const handleConfirmDelete = async () => {
@@ -1353,14 +1384,14 @@ export const ParoleModule: React.FC = () => {
                       className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-black aspect-video group"
                     >
                       <img src={url} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
-                      <a
-                        href={url}
-                        download={`${playingParole.title.replace(/[^a-z0-9]/gi, '_')}_photo_${idx + 1}.jpg`}
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadCapturedPhoto(idx, url)}
                         className="absolute bottom-1.5 right-1.5 px-2 py-1 rounded-lg bg-slate-950/75 text-white text-[10px] font-bold flex items-center gap-1"
                       >
                         <Download className="w-3 h-3" />
                         <span>JPG</span>
-                      </a>
+                      </button>
                     </div>
                   ))}
                 </div>

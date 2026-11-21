@@ -36,6 +36,7 @@ import {
 import { dbService, STORES } from '../../services/db';
 import { useShalomDB } from '../../hooks/useShalomDB';
 import { useLanguage, WORLD_LANGUAGES } from '../../contexts/LanguageContext';
+import { downloadBlobSafe } from '../../utils/download';
 import { useModuleSubView } from '../../contexts/NavigationContext';
 import { Modal } from '../common/Modal';
 import {
@@ -441,6 +442,14 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   };
 
   const handleCheckForUpdates = async () => {
+    if (typeof window !== 'undefined' && window.location.protocol === 'file:') {
+      setUpdateCheckStatus('up-to-date');
+      setUpdateCheckMessage(
+        `Application APK autonome installée (v${__SHALOM_APP_VERSION__}) — Prête hors ligne sur votre téléphone.`
+      );
+      return;
+    }
+
     if (!navigator.onLine) {
       setUpdateCheckStatus('offline');
       setUpdateCheckMessage(
@@ -513,14 +522,8 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
       setBackupLoading(true);
       const jsonBackup = await dbService.exportBackup(false);
       const blob = new Blob([jsonBackup], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `shalom_sauvegarde_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      const fileName = `shalom_sauvegarde_${new Date().toISOString().split('T')[0]}.json`;
+      await downloadBlobSafe(blob, fileName);
       setRestoreMessage('Sauvegarde JSON téléchargée.');
     } catch {
       setRestoreMessage('Erreur lors de la sauvegarde.');
@@ -550,14 +553,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
     try {
       const response = await fetch(`./${fileName}`);
       const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      await downloadBlobSafe(blob, fileName);
       setSaveNotice(`Logo ${fileName} téléchargé.`);
     } catch {
       setSaveNotice('Erreur lors du téléchargement du logo.');
@@ -1666,7 +1662,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
           <div>
             <h4 className="font-bold text-slate-900 dark:text-white mb-1">1. Objet de l’application</h4>
             <p>
-              SHALOM est un espace spirituel personnel destiné à accompagner la prière, la méditation, l’organisation chrétienne, la création visuelle/audio/vidéo et la conservation personnelle de ressources bibliques.
+              SHALOM est un espace spirituel personnel destiné à accompagner la prière, la méditation, l’organisation chrétienne, l’enregistrement audio/vidéo de paroles et la conservation personnelle de ressources bibliques.
             </p>
           </div>
           <div>

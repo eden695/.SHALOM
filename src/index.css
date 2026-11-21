@@ -2,9 +2,24 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+@theme {
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-display: "Outfit", "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 @layer base {
+  html,
   body {
-    @apply antialiased text-slate-800 bg-[#f8fafc] dark:bg-[#0b1329] dark:text-slate-100 min-h-screen selection:bg-blue-600 selection:text-white;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    overscroll-behavior-y: contain;
+    overflow-x: hidden;
+  }
+
+  body {
+    @apply antialiased font-sans text-slate-800 bg-[#f8fafc] dark:bg-[#0b1329] dark:text-slate-100 min-h-screen selection:bg-blue-600 selection:text-white;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }

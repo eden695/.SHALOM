@@ -1,4 +1,5 @@
 // Social Sharing Helper for SHALOM (WhatsApp, Facebook, Instagram, X, TikTok & Native Web Share)
+import { downloadBlobSafe } from '../utils/download';
 
 export type SocialPlatform = 'native' | 'whatsapp' | 'facebook' | 'instagram' | 'x' | 'tiktok';
 
@@ -97,14 +98,7 @@ export async function copyTextQuietly(text: string): Promise<boolean> {
 }
 
 export function triggerFileDownload(file: Blob | File, fileName: string): void {
-  const url = URL.createObjectURL(file);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  void downloadBlobSafe(file, fileName);
 }
 
 export async function tryNativeShare(payload: SharePayload): Promise<'shared' | 'cancelled' | 'unsupported'> {

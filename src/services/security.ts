@@ -104,7 +104,6 @@ export const LOCKABLE_FEATURES: Array<{ id: LockableFeatureId; label: string }> 
   { id: 'prayers', label: 'Mes Prières & Témoignages' },
   { id: 'journey', label: 'Mon Parcours Spirituel' },
   { id: 'parole', label: 'Parole Divine (Audio / Vidéo)' },
-  { id: 'studios', label: 'Studios Créatifs (Visuel · Audio · Vidéo)' },
   { id: 'vault', label: 'Mon Coffre Spirituel' },
   { id: 'calendar', label: 'Mon Calendrier Personnel' },
   { id: 'contacts', label: 'Mes Contacts' },

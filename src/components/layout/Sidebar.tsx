@@ -5,7 +5,6 @@ import {
   HeartHandshake,
   TrendingUp,
   Mic,
-  Sparkles,
   Vault,
   Calendar,
   Users,
@@ -50,13 +49,6 @@ export const NAV_ITEMS: NavItem[] = [
     lockId: 'journey',
   },
   { id: 'parole', labelKey: 'nav.parole', fallbackLabel: 'Parole Divine', icon: Mic, lockId: 'parole' },
-  {
-    id: 'studios',
-    labelKey: 'nav.studios',
-    fallbackLabel: 'Studios Créatifs',
-    icon: Sparkles,
-    lockId: 'studios',
-  },
   {
     id: 'vault',
     labelKey: 'nav.vault',

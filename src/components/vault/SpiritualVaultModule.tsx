@@ -30,6 +30,7 @@ import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { SocialShareModal } from '../common/SocialShareModal';
 import { SharePayload } from '../../services/socialShare';
+import { downloadBlobSafe } from '../../utils/download';
 
 interface OnlineBookEntry {
   bookId: string;
@@ -515,14 +516,7 @@ export const SpiritualVaultModule: React.FC = () => {
   };
 
   const triggerBlobDownload = (blob: Blob, fileName: string) => {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    void downloadBlobSafe(blob, fileName);
   };
 
   const handleSaveDocToPhone = async (doc: VaultDocument) => {
@@ -1383,11 +1377,34 @@ export const SpiritualVaultModule: React.FC = () => {
             )}
 
             {viewingBlobUrl && viewingDoc.mimeType.includes('pdf') && (
-              <iframe
-                src={viewingBlobUrl}
-                title={viewingDoc.title}
-                className="w-full h-[60vh] rounded-xl border border-slate-200 dark:border-slate-800"
-              />
+              <div className="space-y-3">
+                <div className="md:hidden p-5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center space-y-3">
+                  <FileText className="w-10 h-10 text-blue-700 dark:text-blue-400 mx-auto" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">
+                      {viewingDoc.fileName}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                      {isEn
+                        ? 'Android mobile WebView opens PDF files with your device reader. Tap below to save and open it on your phone.'
+                        : 'Sur téléphone Android / APK, enregistrez le PDF sur votre appareil pour l’ouvrir avec votre lecteur PDF habituel.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleSaveDocToPhone(viewingDoc)}
+                    className="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold inline-flex items-center gap-2 shadow-xs"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>{isEn ? 'Save & Open PDF' : 'Enregistrer / Ouvrir le PDF'}</span>
+                  </button>
+                </div>
+                <iframe
+                  src={viewingBlobUrl}
+                  title={viewingDoc.title}
+                  className="hidden md:block w-full h-[60vh] rounded-xl border border-slate-200 dark:border-slate-800"
+                />
+              </div>
             )}
 
             {viewingBlobUrl && viewingDoc.mimeType.startsWith('audio/') && (
