@@ -17,6 +17,7 @@ export type StartupPageOption =
   | 'dashboard'
   | 'altar'
   | 'prayers'
+  | 'church'
   | 'journey'
   | 'parole'
   | 'vault'
@@ -150,6 +151,7 @@ const VALID_STARTUP_PAGES = new Set<string>([
   'dashboard',
   'altar',
   'prayers',
+  'church',
   'journey',
   'parole',
   'vault',

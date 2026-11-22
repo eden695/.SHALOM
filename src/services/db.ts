@@ -17,10 +17,11 @@ import {
   SpiritualHabitLog,
   PersonalProgram,
   ShareHistoryItem,
+  ChurchProgram,
 } from '../types';
 
 const DB_NAME = 'shalom_db';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 export const STORES = {
   PROFILES: 'profiles',
@@ -41,6 +42,7 @@ export const STORES = {
   PERSONAL_PROGRAMS: 'personal_programs',
   VAULT_DOCUMENTS: 'vault_documents',
   BIBLE_STUDIES: 'bible_studies',
+  CHURCH_PROGRAMS: 'church_programs',
 } as const;
 
 export type StoreName = (typeof STORES)[keyof typeof STORES];
@@ -285,6 +287,7 @@ class ShalomDB {
       habitLogs,
       programs,
       shareHistory,
+      churchPrograms,
       blobs,
     ] = await Promise.all([
       this.getAll<RecordedParole>(STORES.RECORDINGS),
@@ -299,6 +302,7 @@ class ShalomDB {
       this.getAll<SpiritualHabitLog>(STORES.HABIT_LOGS),
       this.getAll<PersonalProgram>(STORES.PERSONAL_PROGRAMS),
       this.getAll<ShareHistoryItem>(STORES.SHARE_HISTORY),
+      this.getAll<ChurchProgram>(STORES.CHURCH_PROGRAMS),
       this.getAll<{ id: string }>(STORES.MEDIA_BLOBS),
     ]);
     const activeKeys = new Set<string>();
@@ -338,6 +342,9 @@ class ShalomDB {
     });
     shareHistory.forEach((s) => {
       if (s.mediaBlobKey) activeKeys.add(s.mediaBlobKey);
+    });
+    churchPrograms.forEach((cp) => {
+      if (cp.mediaBlobKey) activeKeys.add(cp.mediaBlobKey);
     });
 
     const orphanIds = blobs.map((b) => b.id).filter((id) => !activeKeys.has(id));

@@ -1,5 +1,5 @@
-// Service Worker for SHALOM - Full Offline Support (CacheFirst hashed assets, NetworkFirst HTML)
-const CACHE_NAME = 'shalom-cache-v12-5fc3f150';
+// Service Worker for SHALOM - Full Offline Mobile & Desktop Support
+const CACHE_NAME = 'shalom-cache-v13-e68df3c5';
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
@@ -8,8 +8,7 @@ const ASSETS_TO_CACHE = [
   "./shalom_logo_512x512.png",
   "./shalom_logo_512x512.jpg",
   "./icon.png",
-  "./assets/index-CuS9GNbK.css",
-  "./assets/index-DyOxqjMQ.js",
+  "./assets/index-C8tHEs-i.js",
   "./assets/outfit-latin-500-normal-ClnHRwRh.woff",
   "./assets/outfit-latin-500-normal-DKnIMDSk.woff2",
   "./assets/outfit-latin-600-normal-B7SfZ07L.woff2",
@@ -73,8 +72,33 @@ const ASSETS_TO_CACHE = [
   "./assets/plus-jakarta-sans-vietnamese-600-normal-5YsyKbU1.woff",
   "./assets/plus-jakarta-sans-vietnamese-600-normal-Y4VTTRme.woff2",
   "./assets/plus-jakarta-sans-vietnamese-700-normal-BCh_uG_5.woff",
-  "./assets/plus-jakarta-sans-vietnamese-700-normal-CV6qDkkj.woff2"
+  "./assets/plus-jakarta-sans-vietnamese-700-normal-CV6qDkkj.woff2",
+  "./assets/style-kjj-sQ9s.css"
 ];
+
+function fetchWithTimeout(request, timeoutMs = 1500) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('network-timeout')), timeoutMs);
+    fetch(request, { cache: 'no-store' })
+      .then((res) => {
+        clearTimeout(timer);
+        resolve(res);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
+async function matchOfflineHtml(request) {
+  const cachedExact = await caches.match(request, { ignoreSearch: true });
+  if (cachedExact) return cachedExact;
+  const fallbackIndex = await caches.match('./index.html', { ignoreSearch: true });
+  if (fallbackIndex) return fallbackIndex;
+  const fallbackRoot = await caches.match('./', { ignoreSearch: true });
+  return fallbackRoot || Response.error();
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -134,40 +158,35 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation / HTML: Network-first with offline cache fallback
-  if (event.request.mode === 'navigate' || url.pathname.endsWith('.html')) {
+  // Navigation / HTML: Fast-timeout NetworkFirst with instant offline cache fallback
+  if (event.request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/')) {
     event.respondWith(
-      fetch(event.request, { cache: 'no-store' })
+      fetchWithTimeout(event.request, 1500)
         .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
+          if (networkResponse && networkResponse.ok) {
             const copy = networkResponse.clone();
+            const indexCopy = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {
               cache.put(event.request, copy);
-              cache.put('./index.html', networkResponse.clone());
+              cache.put('./index.html', indexCopy);
             });
+            return networkResponse;
           }
-          return networkResponse;
+          return matchOfflineHtml(event.request);
         })
-        .catch(async () => {
-          const cached = await caches.match(event.request, { ignoreSearch: true });
-          if (cached) return cached;
-          const fallbackIndex = await caches.match('./index.html');
-          if (fallbackIndex) return fallbackIndex;
-          const fallbackRoot = await caches.match('./');
-          return fallbackRoot || Response.error();
-        })
+        .catch(() => matchOfflineHtml(event.request))
     );
     return;
   }
 
-  // Hashed Vite assets (JS, CSS, WOFF2 fonts): CacheFirst for instant offline startup
+  // Hashed assets (JS, CSS, WOFF2 fonts): CacheFirst for instant offline boot
   if (url.pathname.includes('/assets/')) {
     event.respondWith(
-      caches.match(event.request).then((cachedResponse) => {
+      caches.match(event.request, { ignoreSearch: true }).then((cachedResponse) => {
         if (cachedResponse) return cachedResponse;
         return fetch(event.request)
           .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
+            if (networkResponse && networkResponse.ok) {
               const copy = networkResponse.clone();
               caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
             }
@@ -179,22 +198,29 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  const fetchOptions = url.pathname.endsWith('manifest.json')
-    ? { cache: 'no-store' }
-    : {};
-
+  // Other local assets (manifest, logos, icons): CacheFirst/Network fallback
   event.respondWith(
-    fetch(event.request, fetchOptions)
-      .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const copy = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        }
-        return networkResponse;
-      })
-      .catch(async () => {
-        const cached = await caches.match(event.request, { ignoreSearch: true });
-        return cached || Response.error();
-      })
+    caches.match(event.request, { ignoreSearch: true }).then((cachedResponse) => {
+      if (cachedResponse) {
+        // Refresh silently in background if online
+        fetch(event.request)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.ok) {
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
+            }
+          })
+          .catch(() => {});
+        return cachedResponse;
+      }
+      return fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.ok) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(() => Response.error());
+    })
   );
 });

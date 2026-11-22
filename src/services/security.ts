@@ -102,6 +102,7 @@ export function lockAllSessions(): void {
 export const LOCKABLE_FEATURES: Array<{ id: LockableFeatureId; label: string }> = [
   { id: 'altar', label: 'Mon Autel (Vie secrète)' },
   { id: 'prayers', label: 'Mes Prières & Témoignages' },
+  { id: 'church', label: 'Mon Église' },
   { id: 'journey', label: 'Mon Parcours Spirituel' },
   { id: 'parole', label: 'Parole Divine (Audio / Vidéo)' },
   { id: 'vault', label: 'Mon Coffre Spirituel' },

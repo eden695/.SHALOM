@@ -252,8 +252,8 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
       maxWidth="md"
     >
       <div className="space-y-4 text-xs">
-        {previewUrl && (
-          <div className="rounded-xl overflow-hidden bg-slate-950 border border-slate-200 dark:border-slate-800 p-2">
+        {previewUrl && payload.file && (
+          <div className="rounded-xl overflow-hidden bg-slate-950 border border-slate-200 dark:border-slate-800 p-2 space-y-2">
             {isImage && (
               <img
                 src={previewUrl}
@@ -266,6 +266,12 @@ export const SocialShareModal: React.FC<SocialShareModalProps> = ({
               <video src={previewUrl} controls playsInline className="w-full max-h-48 rounded-lg" />
             )}
             {isAudio && <audio src={previewUrl} controls className="w-full" />}
+            <div className="px-2 py-1 rounded-lg bg-slate-900 text-emerald-300 text-[11px] font-semibold flex items-center justify-between gap-2">
+              <span className="truncate">📎 Fichier associé inclus : {payload.file.name}</span>
+              <span className="shrink-0 text-slate-400">
+                {Math.max(1, Math.round(payload.file.size / 1024))} Ko
+              </span>
+            </div>
           </div>
         )}
 

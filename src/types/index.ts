@@ -7,6 +7,7 @@ export type LockMode = 'pin' | 'password' | 'pattern';
 export type LockableFeatureId =
   | 'altar'
   | 'prayers'
+  | 'church'
   | 'journey'
   | 'parole'
   | 'vault'
@@ -73,6 +74,8 @@ export interface PrayerItem {
   authorizedPersons?: string[];
   authorizedContactIds?: string[];
   nextFollowUpDate?: string;
+  reminderEnabled?: boolean;
+  reminderTime?: string;
   history?: Array<{
     date: string;
     text: string;
@@ -81,6 +84,23 @@ export interface PrayerItem {
   mediaBlobKey?: string;
   mediaType?: 'image' | 'video';
   mediaMimeType?: string;
+}
+
+export interface ChurchProgram {
+  id: string;
+  title: string;
+  scheduleType: 'weekly' | 'event';
+  dayOfWeek?: number; // 0 = Dimanche .. 6 = Samedi
+  date?: string; // YYYY-MM-DD for dated church activities
+  time: string; // HH:mm
+  location?: string;
+  description?: string;
+  reminderEnabled: boolean;
+  mediaBlobKey?: string;
+  mediaType?: 'image' | 'video';
+  mediaMimeType?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface TestimonyItem {

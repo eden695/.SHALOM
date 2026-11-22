@@ -19,6 +19,7 @@ import {
   PersonalProgram,
   VaultDocument,
   BibleStudySession,
+  ChurchProgram,
 } from '../types';
 
 export function useShalomDB() {
@@ -40,6 +41,7 @@ export function useShalomDB() {
   const [personalPrograms, setPersonalPrograms] = useState<PersonalProgram[]>([]);
   const [vaultDocuments, setVaultDocuments] = useState<VaultDocument[]>([]);
   const [bibleStudies, setBibleStudies] = useState<BibleStudySession[]>([]);
+  const [churchPrograms, setChurchPrograms] = useState<ChurchProgram[]>([]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -61,6 +63,7 @@ export function useShalomDB() {
         ppList,
         vdList,
         bsList,
+        cpList,
       ] = await Promise.all([
         dbService.getAll<UserProfile>(STORES.PROFILES),
         dbService.getAll<PrayerItem>(STORES.PRAYERS),
@@ -79,6 +82,7 @@ export function useShalomDB() {
         dbService.getAll<PersonalProgram>(STORES.PERSONAL_PROGRAMS),
         dbService.getAll<VaultDocument>(STORES.VAULT_DOCUMENTS),
         dbService.getAll<BibleStudySession>(STORES.BIBLE_STUDIES),
+        dbService.getAll<ChurchProgram>(STORES.CHURCH_PROGRAMS),
       ]);
 
       setUserProfile(profiles[0] || null);
@@ -98,6 +102,7 @@ export function useShalomDB() {
       setPersonalPrograms(ppList.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
       setVaultDocuments(vdList.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
       setBibleStudies(bsList.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+      setChurchPrograms(cpList.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
     } catch (err) {
       console.error('Erreur chargement données SHALOM:', err);
     } finally {
@@ -138,6 +143,7 @@ export function useShalomDB() {
     personalPrograms,
     vaultDocuments,
     bibleStudies,
+    churchPrograms,
     reloadData,
   };
 }

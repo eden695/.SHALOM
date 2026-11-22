@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Settings,
   Lock,
+  Church,
 } from 'lucide-react';
 import { LockableFeatureId } from '../../types';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -40,6 +41,13 @@ export const NAV_ITEMS: NavItem[] = [
     fallbackLabel: 'Prières & Témoignages',
     icon: HeartHandshake,
     lockId: 'prayers',
+  },
+  {
+    id: 'church',
+    labelKey: 'nav.church',
+    fallbackLabel: 'Mon Église',
+    icon: Church,
+    lockId: 'church',
   },
   {
     id: 'journey',

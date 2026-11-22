@@ -52,7 +52,6 @@ import { useModuleSubView } from '../../contexts/NavigationContext';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { SocialShareModal } from '../common/SocialShareModal';
-import { DataExplorerCard } from './DataExplorerCard';
 import {
   getNotificationSettings,
   saveNotificationSettings,
@@ -147,7 +146,7 @@ const CATEGORY_TABS: Array<{
     code: 'D',
     label: 'Données et stockage',
     shortLabel: 'Données',
-    desc: 'Mémoire locale, cache, sauvegarde JSON & explorateur',
+    desc: 'Mémoire locale, cache et sauvegarde JSON',
     icon: HardDrive,
   },
   {
@@ -278,8 +277,10 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [aboutNotice, setAboutNotice] = useState<string | null>(null);
 
-  // Sharing test modal
+  // Sharing test modal & explicit section save notices
   const [testSharePayload, setTestSharePayload] = useState<SharePayload | null>(null);
+  const [orgNotice, setOrgNotice] = useState<string | null>(null);
+  const [sharingNotice, setSharingNotice] = useState<string | null>(null);
 
   // Storage & Backup State
   const [storageStats, setStorageStats] = useState<{
@@ -933,8 +934,8 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      {/* Header + Horizontal Scrollable Category Bar */}
-      <div className="space-y-4">
+      {/* Header */}
+      <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2 font-display">
@@ -965,27 +966,15 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center gap-1 p-1.5 rounded-2xl bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200/70 dark:border-slate-700/60 max-w-full overflow-x-auto no-scrollbar">
-          {CATEGORY_TABS.map((cat) => {
-            const Icon = cat.icon;
-            const active = subTab === cat.id;
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setSubTab(cat.id)}
-                className={`px-3 py-2 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 whitespace-nowrap shrink-0 min-h-[38px] ${
-                  active
-                    ? 'bg-white dark:bg-[#0f2b5c] text-blue-700 dark:text-white shadow-xs font-bold'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5 shrink-0" />
-                <span>{cat.shortLabel}</span>
-              </button>
-            );
-          })}
-        </div>
+        {subTab !== 'general' && (
+          <button
+            type="button"
+            onClick={() => setSubTab('general')}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 dark:text-blue-400 hover:underline"
+          >
+            <span>← Retour à la vue générale</span>
+          </button>
+        )}
       </div>
 
       {/* HUB VUE GÉNÉRALE */}
@@ -1281,6 +1270,28 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                 </div>
               </div>
             </div>
+
+            <div className="flex items-center justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={async () => {
+                  saveAppPreferences(prefs);
+                  const nextProfile: UserProfile = {
+                    ...userForm,
+                    theme: isDarkMode ? 'dark' : 'light',
+                  };
+                  await dbService.put(STORES.PROFILES, nextProfile);
+                  setUserForm(nextProfile);
+                  setPrefsNotice('Modifications d’apparence enregistrées avec succès.');
+                  reloadData();
+                }}
+                style={{ backgroundColor: 'var(--shalom-primary)' }}
+                className="px-6 py-2.5 rounded-xl hover:opacity-95 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Enregistrer les modifications</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1451,6 +1462,29 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   Autoriser les notifications
                 </button>
               )}
+            </div>
+
+            <div className="flex items-center justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={async () => {
+                  saveNotificationSettings(notifSettings);
+                  if (
+                    notifSettings.dailyPrayer.enabled ||
+                    notifSettings.meditation.enabled ||
+                    notifSettings.bibleReading.enabled
+                  ) {
+                    const perm = await requestReminderNotificationPermission();
+                    setNotifPermission(perm);
+                  }
+                  setNotifNotice('Paramètres de notifications enregistrés avec succès.');
+                }}
+                style={{ backgroundColor: 'var(--shalom-primary)' }}
+                className="px-6 py-2.5 rounded-xl hover:opacity-95 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Enregistrer les modifications</span>
+              </button>
             </div>
           </div>
         </div>
@@ -1786,7 +1820,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   ) : (
                     <>
                       <CheckCircle2 className="w-4 h-4" />
-                      <span>Enregistrer la protection</span>
+                      <span>Enregistrer les modifications</span>
                     </>
                   )}
                 </button>
@@ -2081,14 +2115,6 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
               )}
             </div>
           </div>
-
-          {/* Interactive Stored Data Explorer */}
-          <DataExplorerCard
-            onDataChanged={() => {
-              reloadData();
-              dbService.getStorageEstimate().then(setStorageStats);
-            }}
-          />
         </div>
       )}
 
@@ -2312,7 +2338,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                 ) : (
                   <>
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Enregistrer le profil</span>
+                    <span>Enregistrer les modifications</span>
                   </>
                 )}
               </button>
@@ -2349,6 +2375,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   <option value="dashboard">Accueil (Tableau de bord)</option>
                   <option value="altar">Mon Autel</option>
                   <option value="prayers">Prières & Témoignages</option>
+                  <option value="church">Mon Église</option>
                   <option value="journey">Parcours Spirituel</option>
                   <option value="parole">Parole Divine</option>
                   <option value="vault">Coffre Spirituel</option>
@@ -2469,6 +2496,29 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                 }`}
               >
                 {showUsageTips ? 'Activés' : 'Désactivés'}
+              </button>
+            </div>
+
+            {orgNotice && (
+              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-xs font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{orgNotice}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  saveAppPreferences(prefs);
+                  setUsageTipsEnabled(showUsageTips);
+                  setOrgNotice('Modifications de personnalisation enregistrées avec succès.');
+                }}
+                style={{ backgroundColor: 'var(--shalom-primary)' }}
+                className="px-6 py-2.5 rounded-xl hover:opacity-95 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Enregistrer les modifications</span>
               </button>
             </div>
           </div>
@@ -2609,6 +2659,28 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
                   </div>
                 ))}
               </div>
+            </div>
+
+            {sharingNotice && (
+              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-xs font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{sharingNotice}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  saveAppPreferences(prefs);
+                  setSharingNotice('Modifications des réseaux et partage enregistrées avec succès.');
+                }}
+                style={{ backgroundColor: 'var(--shalom-primary)' }}
+                className="px-6 py-2.5 rounded-xl hover:opacity-95 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Enregistrer les modifications</span>
+              </button>
             </div>
           </div>
         </div>

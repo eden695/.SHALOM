@@ -18,8 +18,10 @@ import {
   Send,
   Upload,
   CheckCircle2,
+  Bell,
 } from 'lucide-react';
 import { dbService, STORES } from '../../services/db';
+import { getLocalTodayStr, requestReminderNotificationPermission } from '../../services/notifications';
 import { importContactsFromVcfOrCsv } from '../../services/phoneContacts';
 import { useShalomDB } from '../../hooks/useShalomDB';
 import { useModuleSubView } from '../../contexts/NavigationContext';
@@ -110,6 +112,8 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
     isPrivate: boolean;
     authorizedContactIds: string[];
     nextFollowUpDate: string;
+    reminderEnabled: boolean;
+    reminderTime: string;
   }>({
     title: '',
     description: '',
@@ -120,6 +124,8 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
     isPrivate: true,
     authorizedContactIds: [],
     nextFollowUpDate: '',
+    reminderEnabled: false,
+    reminderTime: '08:00',
   });
 
   // Directory Contact Picker Modal when selecting "Partageable"
@@ -214,6 +220,8 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
       isPrivate: true,
       authorizedContactIds: [],
       nextFollowUpDate: '',
+      reminderEnabled: false,
+      reminderTime: '08:00',
     });
     setIsPrayerModalOpen(true);
   };
@@ -232,6 +240,8 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
       isPrivate: p.isPrivate,
       authorizedContactIds: p.authorizedContactIds || [],
       nextFollowUpDate: p.nextFollowUpDate || '',
+      reminderEnabled: Boolean(p.reminderEnabled),
+      reminderTime: p.reminderTime || '08:00',
     });
     setIsPrayerModalOpen(true);
   };
@@ -326,6 +336,11 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
       existingMimeType: editingPrayer?.mediaMimeType,
     });
 
+    const effectiveFollowUpDate =
+      prayerForm.reminderEnabled && !prayerForm.nextFollowUpDate
+        ? getLocalTodayStr()
+        : prayerForm.nextFollowUpDate || undefined;
+
     const itemToSave: PrayerItem = {
       id: editingPrayer ? editingPrayer.id : `p_${Date.now()}`,
       title: prayerForm.title.trim(),
@@ -337,7 +352,9 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
       isPrivate: prayerForm.isPrivate,
       authorizedContactIds: !prayerForm.isPrivate ? prayerForm.authorizedContactIds : undefined,
       authorizedPersons: !prayerForm.isPrivate && authNames.length > 0 ? authNames : undefined,
-      nextFollowUpDate: prayerForm.nextFollowUpDate || undefined,
+      nextFollowUpDate: effectiveFollowUpDate,
+      reminderEnabled: prayerForm.reminderEnabled,
+      reminderTime: prayerForm.reminderEnabled ? prayerForm.reminderTime || '08:00' : undefined,
       history: editingPrayer ? editingPrayer.history : [],
       createdAt: editingPrayer ? editingPrayer.createdAt : now,
       updatedAt: now,
@@ -349,6 +366,9 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
     };
 
     await dbService.put(STORES.PRAYERS, itemToSave);
+    if (prayerForm.reminderEnabled) {
+      requestReminderNotificationPermission().catch(() => {});
+    }
     setPrayerPendingMedia(null);
     setPrayerRemovedExistingMedia(false);
     setIsPrayerModalOpen(false);
@@ -359,11 +379,28 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
     }
   };
 
-  const handleSharePrayerToSelected = async (prayer: PrayerItem) => {
-    const text = `🙏 *SUJET DE PRIÈRE - SHALOM*\n\n*${prayer.title}*\n${prayer.description}\n${
-      prayer.bibleVerse ? `\n📖 ${prayer.bibleVerse}` : ''
+  const buildPrayerShareText = (prayer: PrayerItem) =>
+    `🙏 *SUJET DE PRIÈRE - SHALOM*\n\n*${prayer.title}*\n${prayer.description}${
+      prayer.bibleVerse ? `\n\n📖 ${prayer.bibleVerse}` : ''
     }\n\nMerci de porter ce sujet dans vos prières.`;
 
+  const handleSharePrayerSocial = async (prayer: PrayerItem) => {
+    const text = buildPrayerShareText(prayer);
+    const file = await loadMediaAsShareFile(
+      prayer.mediaBlobKey,
+      prayer.title,
+      prayer.mediaType,
+      prayer.mediaMimeType
+    );
+    setSocialSharePayload({
+      title: prayer.title,
+      text,
+      file,
+    });
+  };
+
+  const handleSharePrayerToSelected = async (prayer: PrayerItem) => {
+    const text = buildPrayerShareText(prayer);
     const targetContacts = contacts.filter((c) =>
       prayer.authorizedContactIds?.includes(c.id)
     );
@@ -371,17 +408,7 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
     if (targetContacts.length > 0 && onShareWithContacts && !prayer.mediaBlobKey) {
       onShareWithContacts(targetContacts, text);
     } else {
-      const file = await loadMediaAsShareFile(
-        prayer.mediaBlobKey,
-        prayer.title,
-        prayer.mediaType,
-        prayer.mediaMimeType
-      );
-      setSocialSharePayload({
-        title: prayer.title,
-        text,
-        file,
-      });
+      await handleSharePrayerSocial(prayer);
     }
   };
 
@@ -786,8 +813,16 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
 
                     {prayer.nextFollowUpDate && (
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        <span>Date de suivi : {prayer.nextFollowUpDate}</span>
+                        {prayer.reminderEnabled ? (
+                          <Bell className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                        ) : (
+                          <Clock className="w-3 h-3" />
+                        )}
+                        <span>
+                          {prayer.reminderEnabled
+                            ? `Rappel planifié : ${prayer.nextFollowUpDate} à ${prayer.reminderTime || '08:00'}`
+                            : `Date de suivi : ${prayer.nextFollowUpDate}`}
+                        </span>
                       </p>
                     )}
 
@@ -828,6 +863,15 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>Évolution</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSharePrayerSocial(prayer)}
+                        className="text-blue-700 dark:text-blue-400 hover:underline font-semibold flex items-center gap-1"
+                      >
+                        <Share2 className="w-3.5 h-3.5" />
+                        <span>Partager</span>
                       </button>
 
                       {!prayer.isPrivate && (
@@ -1139,30 +1183,73 @@ export const PrayerModule: React.FC<PrayerModuleProps> = ({
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Verset biblique d’appui
-              </label>
-              <input
-                type="text"
-                placeholder="Ex: Jérémie 30:17"
-                value={prayerForm.bibleVerse}
-                onChange={(e) => setPrayerForm({ ...prayerForm, bibleVerse: e.target.value })}
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Verset biblique d’appui
+            </label>
+            <input
+              type="text"
+              placeholder="Ex: Jérémie 30:17"
+              value={prayerForm.bibleVerse}
+              onChange={(e) => setPrayerForm({ ...prayerForm, bibleVerse: e.target.value })}
+              className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+            />
+          </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Date de suivi / Rappel
-              </label>
+          {/* Planifier un rappel */}
+          <div className="p-3.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/25 border border-blue-200/80 dark:border-blue-900/50 space-y-2.5">
+            <label className="flex items-center justify-between gap-2 cursor-pointer">
+              <span className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-100">
+                <Bell className="w-4 h-4 text-blue-700 dark:text-blue-400 shrink-0" />
+                <span>Planifier un rappel pour cette prière</span>
+              </span>
               <input
-                type="date"
-                value={prayerForm.nextFollowUpDate}
-                onChange={(e) => setPrayerForm({ ...prayerForm, nextFollowUpDate: e.target.value })}
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                type="checkbox"
+                checked={prayerForm.reminderEnabled}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setPrayerForm((prev) => ({
+                    ...prev,
+                    reminderEnabled: checked,
+                    nextFollowUpDate:
+                      checked && !prev.nextFollowUpDate ? getLocalTodayStr() : prev.nextFollowUpDate,
+                    reminderTime: prev.reminderTime || '08:00',
+                  }));
+                }}
+                className="w-4 h-4 accent-blue-700 shrink-0"
               />
+            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                  {prayerForm.reminderEnabled ? 'Date du rappel *' : 'Date de suivi (optionnel)'}
+                </label>
+                <input
+                  type="date"
+                  value={prayerForm.nextFollowUpDate}
+                  onChange={(e) =>
+                    setPrayerForm({ ...prayerForm, nextFollowUpDate: e.target.value })
+                  }
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              {prayerForm.reminderEnabled && (
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                    Heure du rappel *
+                  </label>
+                  <input
+                    type="time"
+                    value={prayerForm.reminderTime}
+                    onChange={(e) =>
+                      setPrayerForm({ ...prayerForm, reminderTime: e.target.value })
+                    }
+                    className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+              )}
             </div>
           </div>
 

@@ -24,14 +24,40 @@ function collectRelativeFiles(dirPath: string, baseDir: string): string[] {
   return results;
 }
 
-function shalomPrecachePlugin(): Plugin {
+function shalomOfflineUniversalPlugin(): Plugin {
   return {
-    name: 'shalom-precache-manifest',
+    name: 'shalom-offline-universal',
     apply: 'build',
     writeBundle(outputOptions) {
       const outDir = outputOptions.dir
         ? path.resolve(outputOptions.dir)
         : path.resolve(__dirname, 'dist');
+
+      // 1. Make built index.html 100% compatible with both HTTP PWA & file:// Android WebView (Website 2 APK Builder)
+      const htmlPath = path.join(outDir, 'index.html');
+      if (fs.existsSync(htmlPath)) {
+        let html = fs.readFileSync(htmlPath, 'utf8');
+        // Strip crossorigin from stylesheet links so file:// WebViews load CSS without CORS errors
+        html = html.replace(
+          /<link\s+rel="stylesheet"\s+crossorigin\s+href="([^"]+)"\s*>/gi,
+          '<link rel="stylesheet" href="$1">'
+        );
+        // Convert <script type="module" crossorigin src="..."> into classic deferred script for file:// & HTTP compatibility
+        const moduleScriptMatch = html.match(
+          /<script\s+type="module"\s+crossorigin\s+src="([^"]+)"\s*><\/script>/i
+        );
+        if (moduleScriptMatch) {
+          const scriptSrc = moduleScriptMatch[1];
+          html = html.replace(moduleScriptMatch[0], '');
+          html = html.replace(
+            '</body>',
+            `    <script defer src="${scriptSrc}"></script>\n  </body>`
+          );
+        }
+        fs.writeFileSync(htmlPath, html, 'utf8');
+      }
+
+      // 2. Inject complete relative precache manifest into sw.js for instant offline PWA startup
       const swPath = path.join(outDir, 'sw.js');
       if (!fs.existsSync(swPath)) return;
 
@@ -59,8 +85,8 @@ function shalomPrecachePlugin(): Plugin {
 
       let swContent = fs.readFileSync(swPath, 'utf8');
       swContent = swContent.replace(
-        /const CACHE_NAME = 'shalom-cache-v12';/,
-        `const CACHE_NAME = 'shalom-cache-v12-${manifestHash}';`
+        /const CACHE_NAME = 'shalom-cache-[^']+';/,
+        `const CACHE_NAME = 'shalom-cache-v13-${manifestHash}';`
       );
       swContent = swContent.replace(
         /const ASSETS_TO_CACHE = \[[\s\S]*?\];/,
@@ -79,7 +105,17 @@ export default defineConfig(() => {
       __SHALOM_APP_VERSION__: JSON.stringify('2.5.0'),
       __SHALOM_BUILD_DATE__: JSON.stringify(new Date().toISOString().split('T')[0]),
     },
-    plugins: [react(), tailwindcss(), shalomPrecachePlugin()],
+    plugins: [react(), tailwindcss(), shalomOfflineUniversalPlugin()],
+    build: {
+      cssCodeSplit: false,
+      rollupOptions: {
+        output: {
+          format: 'iife' as const,
+          name: 'ShalomApp',
+          inlineDynamicImports: true,
+        },
+      },
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

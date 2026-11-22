@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Bell, WifiOff, X } from 'lucide-react';
+import { Bell, X } from 'lucide-react';
 import { useShalomDB } from './hooks/useShalomDB';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { RecordingProvider } from './contexts/RecordingContext';
@@ -11,6 +11,7 @@ import { FloatingRecordingBar } from './components/layout/FloatingRecordingBar';
 import { Dashboard } from './components/dashboard/Dashboard';
 import { AltarModule } from './components/altar/AltarModule';
 import { PrayerModule } from './components/prayers/PrayerModule';
+import { ChurchModule } from './components/church/ChurchModule';
 import { SpiritualJourneyModule } from './components/journey/SpiritualJourneyModule';
 import { ParoleModule } from './components/parole/ParoleModule';
 import { SpiritualVaultModule } from './components/vault/SpiritualVaultModule';
@@ -19,6 +20,7 @@ import { ContactsModule } from './components/contacts/ContactsModule';
 import { MessagingModule } from './components/messaging/MessagingModule';
 import { SettingsModule } from './components/settings/SettingsModule';
 import { LockModal } from './components/security/LockModal';
+import { StoredMediaViewer } from './components/common/MediaAttachment';
 import {
   getSecurityConfig,
   isAppSessionUnlocked,
@@ -34,6 +36,7 @@ import { Contact, SecurityConfig, LockableFeatureId } from './types';
 const LOCKABLE_IDS: LockableFeatureId[] = [
   'altar',
   'prayers',
+  'church',
   'journey',
   'parole',
   'vault',
@@ -60,7 +63,7 @@ function ShalomAppShell({
   isLaunchLockOpen,
   setIsLaunchLockOpen,
 }: ShellProps) {
-  const { userProfile, loading } = useShalomDB();
+  const { userProfile, loading, churchPrograms, prayers } = useShalomDB();
   const { t, lang } = useLanguage();
   const isEn = lang === 'en';
   const { activeTab, canGoBack, navigateTo, goBack, goHome } = useNavigation();
@@ -72,21 +75,7 @@ function ShalomAppShell({
   } | null>(null);
 
   const [activeReminderBanner, setActiveReminderBanner] = useState<DueReminderPayload | null>(null);
-  const [isOnline, setIsOnline] = useState<boolean>(() =>
-    typeof navigator !== 'undefined' ? navigator.onLine : true
-  );
   const lastActivityRef = useRef<number>(Date.now());
-
-  useEffect(() => {
-    const goOnline = () => setIsOnline(true);
-    const goOffline = () => setIsOnline(false);
-    window.addEventListener('online', goOnline);
-    window.addEventListener('offline', goOffline);
-    return () => {
-      window.removeEventListener('online', goOnline);
-      window.removeEventListener('offline', goOffline);
-    };
-  }, []);
 
   const handleLockNow = useCallback(() => {
     lockAllSessions();
@@ -139,18 +128,33 @@ function ShalomAppShell({
     handleLockNow,
   ]);
 
-  // Scheduled local prayer/meditation/bible reminders
+  // Scheduled local reminders (daily spiritual reminders + Mon Église + planned prayers, offline & online)
   useEffect(() => {
     const runCheck = () => {
-      const due = checkDueReminders(isEn);
+      const due = checkDueReminders(isEn, churchPrograms, prayers);
       if (due) {
         setActiveReminderBanner(due);
       }
     };
+    const onManualTrigger = (evt: Event) => {
+      const custom = evt as CustomEvent<DueReminderPayload>;
+      if (custom.detail) {
+        setActiveReminderBanner(custom.detail);
+      }
+    };
+
     runCheck();
-    const timer = window.setInterval(runCheck, 25000);
-    return () => window.clearInterval(timer);
-  }, [isEn]);
+    const timer = window.setInterval(runCheck, 15000);
+    window.addEventListener('shalom-settings-updated', runCheck);
+    window.addEventListener('shalom-db-updated', runCheck);
+    window.addEventListener('shalom-trigger-reminder', onManualTrigger);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('shalom-settings-updated', runCheck);
+      window.removeEventListener('shalom-db-updated', runCheck);
+      window.removeEventListener('shalom-trigger-reminder', onManualTrigger);
+    };
+  }, [isEn, churchPrograms, prayers]);
 
   const handleSelectTab = (tab: string, subView?: string) => {
     const isFeatureProtected =
@@ -242,35 +246,58 @@ function ShalomAppShell({
           onGoHome={goHome}
         />
 
-        {!isOnline && (
-          <div className="bg-amber-50 dark:bg-amber-950/50 border-b border-amber-200 dark:border-amber-900/60 px-4 py-1.5 text-center text-xs font-medium text-amber-900 dark:text-amber-200 flex items-center justify-center gap-2">
-            <WifiOff className="w-3.5 h-3.5 shrink-0" />
-            <span>
-              {isEn
-                ? 'Offline mode active — Your data and tools remain fully usable locally.'
-                : 'Mode hors ligne actif — Vos données restent pleinement utilisables localement.'}
-            </span>
-          </div>
-        )}
-
         {activeReminderBanner && (
           <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 pt-3">
-            <div className="p-3.5 rounded-2xl bg-blue-700 text-white shadow-md flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <Bell className="w-4 h-4 text-amber-300 shrink-0" />
-                <div className="min-w-0 text-xs">
-                  <div className="font-bold truncate">{activeReminderBanner.title}</div>
-                  <div className="text-blue-100 truncate">{activeReminderBanner.body}</div>
+            <div className="p-4 rounded-2xl bg-blue-700 text-white shadow-lg border border-blue-500/40 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <Bell className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+                  <div className="min-w-0 text-xs space-y-1">
+                    {activeReminderBanner.slotLabel && (
+                      <span className="inline-block px-2 py-0.5 rounded-md bg-white/15 text-amber-200 font-bold text-[10px] uppercase tracking-wider">
+                        {activeReminderBanner.slotLabel}
+                      </span>
+                    )}
+                    <div className="font-bold text-sm">{activeReminderBanner.title}</div>
+                    <div className="text-blue-100 whitespace-pre-line leading-relaxed">
+                      {activeReminderBanner.body}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  {activeReminderBanner.navigateTab && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = activeReminderBanner.navigateTab!;
+                        setActiveReminderBanner(null);
+                        handleSelectTab(target);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-[11px] font-bold"
+                    >
+                      Ouvrir
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setActiveReminderBanner(null)}
+                    className="p-1.5 rounded-lg hover:bg-white/15 shrink-0"
+                    aria-label="Fermer le rappel"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setActiveReminderBanner(null)}
-                className="p-1.5 rounded-lg hover:bg-white/15 shrink-0"
-                aria-label="Fermer le rappel"
-              >
-                <X className="w-4 h-4" />
-              </button>
+
+              {activeReminderBanner.mediaBlobKey && (
+                <StoredMediaViewer
+                  mediaBlobKey={activeReminderBanner.mediaBlobKey}
+                  mediaType={activeReminderBanner.mediaType}
+                  alt={activeReminderBanner.title}
+                  className="max-w-md"
+                />
+              )}
             </div>
           </div>
         )}
@@ -301,6 +328,8 @@ function ShalomAppShell({
               }}
             />
           )}
+
+          {activeTab === 'church' && <ChurchModule />}
 
           {activeTab === 'journey' && <SpiritualJourneyModule />}
 
